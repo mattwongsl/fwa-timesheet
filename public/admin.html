@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">🕒 Timesheet — Admin</div>
+    <nav>
+      <a href="/employee.html">My Timesheet</a>
+      <a href="/admin.html" class="active">Admin Dashboard</a>
+      <a href="#" id="logoutLink">Log out</a>
+    </nav>
+  </div>
+
+  <div class="container">
+    <div class="tabs">
+      <button data-tab="timesheets" class="active">Timesheets</button>
+      <button data-tab="requests">Unlock Requests <span id="pendingCount"></span></button>
+      <button data-tab="stats">Dashboard &amp; Export</button>
+      <button data-tab="employees">Employees</button>
+      <button data-tab="projects">Projects</button>
+    </div>
+
+    <!-- TIMESHEETS TAB -->
+    <div class="tab-panel active" id="panel-timesheets">
+      <div class="card">
+        <h2 class="mt-0">Filter</h2>
+        <div class="flex-row">
+          <select id="filterEmployee"><option value="">All employees</option></select>
+          <label class="muted">From <input type="date" id="filterFrom"></label>
+          <label class="muted">To <input type="date" id="filterTo"></label>
+          <button class="btn secondary small" id="applyFilter">Apply</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2 class="mt-0">All Timesheets</h2>
+        <table>
+          <thead><tr><th>Employee</th><th>Week</th><th>Status</th><th>Work</th><th>Extra Hrs</th><th>Sick (days)</th><th>Local Leave (days)</th><th></th></tr></thead>
+          <tbody id="timesheetsBody"></tbody>
+        </table>
+      </div>
+      <div class="card" id="editPanel" style="display:none">
+        <h2 class="mt-0" id="editTitle">Edit Timesheet</h2>
+        <div class="timesheet-heading" id="editWeekHeading"></div>
+        <div id="editDaysContainer"></div>
+        <div class="flex-row" style="margin-top:10px">
+          <button class="btn secondary" id="editSaveBtn">Save Changes</button>
+          <button class="btn secondary" id="editLockBtn">Lock</button>
+          <button class="btn secondary" id="editUnlockBtn">Unlock</button>
+          <button class="btn danger" id="editCloseBtn">Close</button>
+          <span id="editMsg" class="success-msg"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- UNLOCK REQUESTS TAB -->
+    <div class="tab-panel" id="panel-requests">
+      <div class="card">
+        <h2 class="mt-0">Pending Unlock Requests</h2>
+        <table>
+          <thead><tr><th>Employee</th><th>Week</th><th>Reason</th><th>Requested</th><th></th></tr></thead>
+          <tbody id="requestsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- STATS TAB -->
+    <div class="tab-panel" id="panel-stats">
+      <div class="card">
+        <h2 class="mt-0">Date Range</h2>
+        <div class="flex-row">
+          <label class="muted">From <input type="date" id="statsFrom"></label>
+          <label class="muted">To <input type="date" id="statsTo"></label>
+          <button class="btn secondary small" id="applyStats">Apply</button>
+          <span class="spacer"></span>
+          <a class="btn small" id="exportBtn" href="#" target="_blank">Export Data</a>
+        </div>
+      </div>
+      <div class="card">
+        <h2 class="mt-0">Company Totals</h2>
+        <div class="summary-grid" id="companyStats"></div>
+      </div>
+      <div class="card">
+        <h2 class="mt-0">Hours by Employee</h2>
+        <table>
+          <thead><tr><th>Employee</th><th>Work Hrs</th><th>Extra Hrs</th><th>Sick (days)</th><th>Local Leave (days)</th><th>Emergency (days)</th></tr></thead>
+          <tbody id="statsByEmployee"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h2 class="mt-0">Hours by Project</h2>
+        <table>
+          <thead><tr><th>Project Name</th><th>Hours</th></tr></thead>
+          <tbody id="statsByProject"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h2 class="mt-0">Project Details</h2>
+        <p class="muted" style="margin-top:-8px;font-size:13px">Hours worked by each employee on each project, for the date range above. Employees with no hours on a project aren't listed under it.</p>
+        <div id="projectDetailContainer"></div>
+      </div>
+    </div>
+
+    <!-- EMPLOYEES TAB -->
+    <div class="tab-panel" id="panel-employees">
+      <div class="card">
+        <h2 class="mt-0">Add Employee</h2>
+        <div class="flex-row">
+          <input type="text" id="newEmpName" placeholder="Full name">
+          <input type="email" id="newEmpEmail" placeholder="Email">
+          <select id="newEmpRole"><option value="employee">Employee</option><option value="admin">Admin</option></select>
+          <button class="btn small" id="addEmpBtn">Add</button>
+        </div>
+        <div id="newEmpMsg" class="info-msg"></div>
+      </div>
+      <div class="card">
+        <h2 class="mt-0">All Employees</h2>
+        <table>
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+          <tbody id="employeesBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- PROJECTS TAB -->
+    <div class="tab-panel" id="panel-projects">
+      <div class="card">
+        <h2 class="mt-0">Add Project</h2>
+        <div class="flex-row">
+          <input type="text" id="newProjName" placeholder="Project name">
+          <button class="btn small" id="addProjBtn">Add</button>
+        </div>
+        <div id="newProjMsg" class="info-msg"></div>
+      </div>
+      <div class="card">
+        <h2 class="mt-0">All Projects</h2>
+        <table>
+          <thead><tr><th>Name</th><th>Status</th><th></th></tr></thead>
+          <tbody id="projectsBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/admin.js"></script>
+</body>
+</html>

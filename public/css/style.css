@@ -1,0 +1,329 @@
+:root {
+  --bg: #f4f5f7;
+  --card: #ffffff;
+  --border: #e2e4e9;
+  --text: #1f2430;
+  --muted: #6b7280;
+  --primary: #2d5bff;
+  --primary-dark: #1f3fcc;
+  --danger: #e0393e;
+  --success: #1f9d55;
+  --warn: #b9770e;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+a { color: var(--primary); text-decoration: none; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar .brand { font-weight: 700; font-size: 18px; }
+.topbar nav a {
+  margin-left: 18px;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 14px;
+}
+.topbar nav a.active, .topbar nav a:hover { color: var(--primary); }
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.card h2 { margin-top: 0; font-size: 16px; }
+
+.btn {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  background: var(--primary);
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+.btn:hover { background: var(--primary-dark); }
+.btn.secondary { background: #eef1ff; color: var(--primary); }
+.btn.secondary:hover { background: #dbe1ff; }
+.btn.danger { background: var(--danger); }
+.btn.small { padding: 5px 10px; font-size: 12px; }
+.btn:disabled { background: #c7cbd8; cursor: not-allowed; }
+
+input, select {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  background: white;
+  color: var(--text);
+}
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+
+.day-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.day-card .day-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.day-card .day-name { font-weight: 700; }
+.day-card .day-date { color: var(--muted); font-size: 13px; }
+
+.project-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.project-row select { flex: 1; }
+.project-row input[type="number"] { width: 90px; }
+
+.badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.badge.locked { background: #fde8e8; color: var(--danger); }
+.badge.open { background: #e6f7ec; color: var(--success); }
+.badge.pending { background: #fdf3de; color: var(--warn); }
+
+.week-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.week-nav .label { font-weight: 700; font-size: 15px; }
+.timesheet-heading { font-size: 28px; font-weight: 800; margin: 4px 0 16px; color: var(--primary); }
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.summary-grid .stat { text-align: center; background: #f7f8fb; border-radius: 8px; padding: 10px; }
+.summary-grid .stat .value { font-size: 20px; font-weight: 700; }
+.summary-grid .stat .label { font-size: 12px; color: var(--muted); }
+
+.error-msg { color: var(--danger); font-size: 13px; margin-top: 6px; }
+.info-msg { color: var(--muted); font-size: 13px; margin-top: 6px; }
+.success-msg { color: var(--success); font-size: 13px; margin-top: 6px; }
+
+.login-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.login-card { width: 340px; }
+.login-card h1 { font-size: 20px; margin-bottom: 4px; }
+.login-card p { color: var(--muted); font-size: 13px; margin-top: 0; }
+.field { margin-bottom: 14px; display: flex; flex-direction: column; gap: 6px; }
+.field label { font-size: 13px; font-weight: 600; }
+.field input { width: 100%; }
+
+.tabs { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
+.tabs button {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  background: white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--muted);
+}
+.tabs button.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.flex-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.spacer { flex: 1; }
+.muted { color: var(--muted); }
+.mt-0 { margin-top: 0; }
+
+/* =========================================================
+   EMPLOYEE TIMESHEET - DAY TYPE COLOURS
+   ========================================================= */
+
+.day-card {
+  border-left: 5px solid var(--border);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+/* Working day */
+.day-card.day-work {
+  border-left-color: #191970;
+  background: #eef6ff;
+}
+
+/* Sick leave */
+.day-card.day-sick {
+  border-left-color: #e0393e;
+  background: #fff8f8;
+}
+
+/* Local leave */
+.day-card.day-local {
+  border-left-color: #8e44ad;
+  background: #fbf7fd;
+}
+
+/* Emergency leave */
+.day-card.day-emergency {
+  border-left-color: #e6a700;
+  background: #fffaf0;
+}
+
+/* Public holiday */
+.day-card.day-public-holiday {
+  border-left-color: #7f8c8d;
+  background: #f5f6f6;
+}
+
+
+/* =========================================================
+   DAY TYPE LABEL
+   ========================================================= */
+
+.day-type-label {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.day-type-label.work {
+  background: #e8efff;
+  color: #191970;
+}
+
+.day-type-label.sick {
+  background: #fde8e8;
+  color: var(--danger);
+}
+
+.day-type-label.local {
+  background: #f1e5f5;
+  color: #7b2fa0;
+}
+
+.day-type-label.emergency {
+  background: #fff0c7;
+  color: #946b00;
+}
+
+.day-type-label.public-holiday {
+  background: #e5e7e9;
+  color: #5f6b6d;
+}
+
+
+/* =========================================================
+   HOURS PROGRESS
+   ========================================================= */
+
+.hours-progress {
+  width: 70%;
+  margin: 16px auto 0;
+}
+
+.hours-progress-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.hours-progress-value {
+  font-weight: 700;
+}
+
+.hours-progress-required {
+  color: var(--muted);
+}
+
+.progress-track {
+  width: 100%;
+  height: 9px;
+  background: #e9ebf0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  transition: width 0.25s ease;
+  background: #C4A484;
+}
+
+.progress-bar.complete {
+  background: var(--success);
+}
+
+.progress-bar.over {
+  background: #7b61ff;
+}
+
+.hours-progress-message {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.hours-progress-message.complete {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.hours-progress-message.over {
+  color: #7b61ff;
+  font-weight: 600;
+}

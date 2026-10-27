@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Timesheet</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">🕒 Timesheet</div>
+    <nav>
+      <a href="/employee.html" class="active">My Timesheet</a>
+      <a href="#" id="adminLink" style="display:none">Admin Dashboard</a>
+      <a href="#" id="logoutLink">Log out</a>
+    </nav>
+  </div>
+
+  <div class="container">
+    <div class="timesheet-heading" id="timesheetHeading"></div>
+    <div class="card">
+      <div class="week-nav">
+        <button class="btn secondary small" id="prevWeek">&larr; Prev</button>
+        <span class="label" id="weekLabel">Week of ...</span>
+        <button class="btn secondary small" id="nextWeek">Next &rarr;</button>
+        <label class="muted" style="margin-left:6px">Jump to week: <input type="date" id="weekPicker"></label>
+        <button class="btn secondary small" id="thisWeekBtn">This Week</button>
+        <span class="spacer"></span>
+        <span id="statusBadge"></span>
+      </div>
+
+      <div id="lockedNotice" style="display:none" class="info-msg"></div>
+      <div id="unlockRequestArea" style="display:none">
+        <textarea id="unlockReason" placeholder="Reason for unlock request (optional)" rows="2" style="width:100%;margin-top:8px;"></textarea>
+        <button class="btn secondary small" id="requestUnlockBtn" style="margin-top:6px">Request Unlock From Admin</button>
+        <div id="unlockMsg" class="info-msg"></div>
+      </div>
+
+      <div id="daysContainer"></div>
+
+      <div class="flex-row" style="margin-top:14px">
+        <button class="btn secondary" id="saveBtn">Save Draft</button>
+        <button class="btn" id="submitBtn">Submit Timesheet for the Week</button>
+        <span id="saveMsg" class="success-msg"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="mt-0">This Week's Summary</h2>
+      <div class="summary-grid" id="summaryGrid"></div>
+    </div>
+
+    <div class="card">
+      <h2 class="mt-0">History</h2>
+      <table>
+        <thead><tr><th>Week</th><th>Status</th><th>Work Hrs</th><th>Extra Hrs</th><th>Sick (days)</th><th>Local Leave (days)</th><th>Emergency (days)</th><th>Public Hol.</th></tr></thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/employee.js"></script>
+</body>
+</html>
