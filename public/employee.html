@@ -3,26 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>My Timesheet</title>
+<title>My Timesheet · FWA</title>
 <link rel="stylesheet" href="/css/style.css">
 </head>
-<body>
-  <div class="topbar">
-    <div class="brand">🕒 Timesheet</div>
-    <nav>
-      <a href="/employee.html" class="active">My Timesheet</a>
+<body class="employee-page">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="topbar">
+    <a class="brand" href="/employee.html" aria-label="FWA Timesheets home">
+      <img class="brand-logo" src="/images/fwa-logo.jpg" alt="FWA Architects" width="64" height="52">
+      <span class="brand-name">Francis Wong<span>Architects</span></span>
+      <span class="brand-product">Timesheets</span>
+    </a>
+    <nav aria-label="Main navigation">
+      <a href="/employee.html" class="active" aria-current="page">My Timesheet</a>
       <a href="#" id="adminLink" style="display:none">Admin Dashboard</a>
       <a href="#" id="logoutLink">Log out</a>
     </nav>
-  </div>
+  </header>
 
-  <div class="container">
-    <div class="timesheet-heading" id="timesheetHeading"></div>
-    <div class="card">
+  <main class="container" id="main">
+    <div class="page-heading">
+      <div><span class="eyebrow">Your working week</span>
+        <h1 class="timesheet-heading" id="timesheetHeading">My timesheet</h1>
+        <p>Make time for the details. Record your projects, hours, and leave.</p>
+      </div>
+      <span class="workspace-marker">FWA <span>/</span> Team workspace</span>
+    </div>
+    <div class="employee-workspace">
+    <section class="card timesheet-card" aria-label="Weekly timesheet">
       <div class="week-nav">
-        <button class="btn secondary small" id="prevWeek">&larr; Prev</button>
+        <button class="btn secondary small" id="prevWeek" aria-label="Previous week">&larr; Prev</button>
         <span class="label" id="weekLabel">Week of ...</span>
-        <button class="btn secondary small" id="nextWeek">Next &rarr;</button>
+        <button class="btn secondary small" id="nextWeek" aria-label="Next week">Next &rarr;</button>
         <label class="muted" style="margin-left:6px">Jump to week: <input type="date" id="weekPicker"></label>
         <button class="btn secondary small" id="thisWeekBtn">This Week</button>
         <span class="spacer"></span>
@@ -31,33 +43,41 @@
 
       <div id="lockedNotice" style="display:none" class="info-msg"></div>
       <div id="unlockRequestArea" style="display:none">
-        <textarea id="unlockReason" placeholder="Reason for unlock request (optional)" rows="2" style="width:100%;margin-top:8px;"></textarea>
+        <textarea id="unlockReason" aria-label="Reason for unlock request (optional)" placeholder="Reason for unlock request (optional)" rows="2" style="width:100%;margin-top:8px;"></textarea>
         <button class="btn secondary small" id="requestUnlockBtn" style="margin-top:6px">Request Unlock From Admin</button>
         <div id="unlockMsg" class="info-msg"></div>
       </div>
 
       <div id="daysContainer"></div>
 
-      <div class="flex-row" style="margin-top:14px">
+      <div class="flex-row timesheet-actions">
         <button class="btn secondary" id="saveBtn">Save Draft</button>
         <button class="btn" id="submitBtn">Submit Timesheet for the Week</button>
-        <span id="saveMsg" class="success-msg"></span>
+        <span id="saveMsg" class="success-msg" role="status"></span>
       </div>
-    </div>
+    </section>
 
-    <div class="card">
-      <h2 class="mt-0">This Week's Summary</h2>
+    <aside class="card summary-card">
+      <span class="eyebrow">At a glance</span>
+      <h2 class="mt-0">This week's summary</h2>
       <div class="summary-grid" id="summaryGrid"></div>
+      <div class="summary-note">
+        <span class="eyebrow">A note on your week</span>
+        <p>Log hours in half-hour increments. Save a draft as you go, then submit when your week is complete.</p>
+        <span class="summary-note-footer">Monday &ndash; Friday <span>7.5 hrs / day</span></span>
+      </div>
+    </aside>
     </div>
 
-    <div class="card">
-      <h2 class="mt-0">History</h2>
-      <table>
+    <section class="card history-card" aria-labelledby="historyHeading">
+      <div class="section-heading"><div><span class="eyebrow">Previous weeks</span><h2 class="mt-0" id="historyHeading">Your timesheet history</h2></div><span class="muted">A record of your time</span></div>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable data table"><table>
         <thead><tr><th>Week</th><th>Status</th><th>Work Hrs</th><th>Extra Hrs</th><th>Sick (days)</th><th>Local Leave (days)</th><th>Emergency (days)</th><th>Public Hol.</th></tr></thead>
         <tbody id="historyBody"></tbody>
-      </table>
-    </div>
-  </div>
+      </table></div>
+    </section>
+    <footer class="site-footer"><span>Francis Wong Associates Ltd.</span><span>FWA / Timesheets</span></footer>
+  </main>
 
   <script src="/js/api.js"></script>
   <script src="/js/employee.js"></script>

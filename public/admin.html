@@ -3,21 +3,30 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Admin Dashboard</title>
+<title>Studio Administration · FWA</title>
 <link rel="stylesheet" href="/css/style.css">
 </head>
-<body>
-  <div class="topbar">
-    <div class="brand">🕒 Timesheet — Admin</div>
-    <nav>
+<body class="admin-page">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="topbar">
+    <a class="brand" href="/admin.html" aria-label="FWA administration home">
+      <img class="brand-logo" src="/images/fwa-logo.jpg" alt="FWA Architects" width="64" height="52">
+      <span class="brand-name">Francis Wong<span>Architects</span></span>
+      <span class="brand-product">Timesheets</span>
+    </a>
+    <nav aria-label="Main navigation">
       <a href="/employee.html">My Timesheet</a>
-      <a href="/admin.html" class="active">Admin Dashboard</a>
+      <a href="/admin.html" class="active" aria-current="page">Admin Dashboard</a>
       <a href="#" id="logoutLink">Log out</a>
     </nav>
-  </div>
+  </header>
 
-  <div class="container">
-    <div class="tabs">
+  <main class="container" id="main">
+    <div class="page-heading">
+      <div><span class="eyebrow">Studio administration</span><h1>Every week. In view.</h1><p>A clear picture of your team's time, projects, and progress.</p></div>
+      <span class="workspace-marker">FWA <span>/</span> Admin workspace</span>
+    </div>
+    <div class="tabs" role="group" aria-label="Administration sections">
       <button data-tab="timesheets" class="active">Timesheets</button>
       <button data-tab="requests">Unlock Requests <span id="pendingCount"></span></button>
       <button data-tab="stats">Dashboard &amp; Export</button>
@@ -28,20 +37,20 @@
     <!-- TIMESHEETS TAB -->
     <div class="tab-panel active" id="panel-timesheets">
       <div class="card">
-        <h2 class="mt-0">Filter</h2>
+        <h2 class="mt-0">Find a timesheet</h2>
         <div class="flex-row">
-          <select id="filterEmployee"><option value="">All employees</option></select>
+          <select id="filterEmployee" aria-label="Filter by employee"><option value="">All employees</option></select>
           <label class="muted">From <input type="date" id="filterFrom"></label>
           <label class="muted">To <input type="date" id="filterTo"></label>
-          <button class="btn secondary small" id="applyFilter">Apply</button>
+          <button class="btn secondary small" id="applyFilter">Apply filters</button>
         </div>
       </div>
       <div class="card">
         <h2 class="mt-0">All Timesheets</h2>
-        <table>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable data table"><table>
           <thead><tr><th>Employee</th><th>Week</th><th>Status</th><th>Work</th><th>Extra Hrs</th><th>Sick (days)</th><th>Local Leave (days)</th><th></th></tr></thead>
           <tbody id="timesheetsBody"></tbody>
-        </table>
+        </table></div>
       </div>
       <div class="card" id="editPanel" style="display:none">
         <h2 class="mt-0" id="editTitle">Edit Timesheet</h2>
@@ -61,10 +70,10 @@
     <div class="tab-panel" id="panel-requests">
       <div class="card">
         <h2 class="mt-0">Pending Unlock Requests</h2>
-        <table>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable data table"><table>
           <thead><tr><th>Employee</th><th>Week</th><th>Reason</th><th>Requested</th><th></th></tr></thead>
           <tbody id="requestsBody"></tbody>
-        </table>
+        </table></div>
       </div>
     </div>
 
@@ -86,17 +95,17 @@
       </div>
       <div class="card">
         <h2 class="mt-0">Hours by Employee</h2>
-        <table>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable data table"><table>
           <thead><tr><th>Employee</th><th>Work Hrs</th><th>Extra Hrs</th><th>Sick (days)</th><th>Local Leave (days)</th><th>Emergency (days)</th></tr></thead>
           <tbody id="statsByEmployee"></tbody>
-        </table>
+        </table></div>
       </div>
       <div class="card">
         <h2 class="mt-0">Hours by Project</h2>
-        <table>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable data table"><table>
           <thead><tr><th>Project Name</th><th>Hours</th></tr></thead>
           <tbody id="statsByProject"></tbody>
-        </table>
+        </table></div>
       </div>
       <div class="card">
         <h2 class="mt-0">Project Details</h2>
@@ -110,19 +119,19 @@
       <div class="card">
         <h2 class="mt-0">Add Employee</h2>
         <div class="flex-row">
-          <input type="text" id="newEmpName" placeholder="Full name">
-          <input type="email" id="newEmpEmail" placeholder="Email">
-          <select id="newEmpRole"><option value="employee">Employee</option><option value="admin">Admin</option></select>
-          <button class="btn small" id="addEmpBtn">Add</button>
+          <input type="text" id="newEmpName" aria-label="Employee full name" placeholder="Full name">
+          <input type="email" id="newEmpEmail" aria-label="Employee email" placeholder="Email">
+          <select id="newEmpRole" aria-label="Employee role"><option value="employee">Employee</option><option value="admin">Admin</option></select>
+          <button class="btn small" id="addEmpBtn">Add employee</button>
         </div>
         <div id="newEmpMsg" class="info-msg"></div>
       </div>
       <div class="card">
         <h2 class="mt-0">All Employees</h2>
-        <table>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable data table"><table>
           <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
           <tbody id="employeesBody"></tbody>
-        </table>
+        </table></div>
       </div>
     </div>
 
@@ -131,20 +140,21 @@
       <div class="card">
         <h2 class="mt-0">Add Project</h2>
         <div class="flex-row">
-          <input type="text" id="newProjName" placeholder="Project name">
-          <button class="btn small" id="addProjBtn">Add</button>
+          <input type="text" id="newProjName" aria-label="Project name" placeholder="Project name">
+          <button class="btn small" id="addProjBtn">Add project</button>
         </div>
         <div id="newProjMsg" class="info-msg"></div>
       </div>
       <div class="card">
         <h2 class="mt-0">All Projects</h2>
-        <table>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable data table"><table>
           <thead><tr><th>Name</th><th>Status</th><th></th></tr></thead>
           <tbody id="projectsBody"></tbody>
-        </table>
+        </table></div>
       </div>
     </div>
-  </div>
+    <footer class="site-footer"><span>Francis Wong Associates Ltd.</span><span>FWA / Timesheets</span></footer>
+  </main>
 
   <script src="/js/api.js"></script>
   <script src="/js/admin.js"></script>
