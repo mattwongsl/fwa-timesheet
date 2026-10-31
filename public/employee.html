@@ -48,6 +48,7 @@
         <div id="unlockMsg" class="info-msg"></div>
       </div>
 
+      <div class="journal-heading"><h2>Daily record</h2><p>Record your work. Save your progress. Submit your week.</p></div>
       <div id="daysContainer"></div>
 
       <div class="flex-row timesheet-actions">
@@ -56,17 +57,6 @@
         <span id="saveMsg" class="success-msg" role="status"></span>
       </div>
     </section>
-
-    <aside class="card summary-card">
-      <span class="eyebrow">At a glance</span>
-      <h2 class="mt-0">This week's summary</h2>
-      <div class="summary-grid" id="summaryGrid"></div>
-      <div class="summary-note">
-        <span class="eyebrow">A note on your week</span>
-        <p>Log hours in half-hour increments. Save a draft as you go, then submit when your week is complete.</p>
-        <span class="summary-note-footer">Monday &ndash; Friday <span>7.5 hrs / day</span></span>
-      </div>
-    </aside>
     </div>
 
     <section class="card history-card" aria-labelledby="historyHeading">
@@ -75,6 +65,12 @@
         <thead><tr><th>Week</th><th>Status</th><th>Work Hrs</th><th>Extra Hrs</th><th>Sick (days)</th><th>Local Leave (days)</th><th>Emergency (days)</th><th>Public Hol.</th></tr></thead>
         <tbody id="historyBody"></tbody>
       </table></div>
+    </section>
+    <section class="card week-overview" aria-labelledby="overviewHeading">
+      <span class="eyebrow">The week in numbers</span>
+      <h2 id="overviewHeading">Your weekly overview</h2>
+      <div class="summary-grid" id="summaryGrid"></div>
+      <p class="overview-caption">Monday–Friday &nbsp; / &nbsp; 7.5 hours per full working day &nbsp; / &nbsp; Record time in half-hour increments</p>
     </section>
     <footer class="site-footer"><span>Francis Wong Associates Ltd.</span><span>FWA / Timesheets</span></footer>
   </main>

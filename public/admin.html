@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Studio Administration · FWA</title>
 <link rel="stylesheet" href="/css/style.css">
+<link rel="stylesheet" href="/css/reports.css">
 </head>
 <body class="admin-page">
   <a class="skip-link" href="#main">Skip to content</a>
@@ -79,39 +80,40 @@
 
     <!-- STATS TAB -->
     <div class="tab-panel" id="panel-stats">
-      <div class="card">
-        <h2 class="mt-0">Date Range</h2>
-        <div class="flex-row">
-          <label class="muted">From <input type="date" id="statsFrom"></label>
-          <label class="muted">To <input type="date" id="statsTo"></label>
-          <button class="btn secondary small" id="applyStats">Apply</button>
-          <span class="spacer"></span>
-          <a class="btn small" id="exportBtn" href="#" target="_blank">Export Data</a>
+      <section class="card project-directory" aria-labelledby="projectTableHeading">
+        <div class="section-heading"><div><span class="eyebrow">Project intelligence</span><h2 id="projectTableHeading">Projects, in perspective.</h2><p class="muted">Explore recorded time, open a project, or compare two side by side.</p></div>
+          <a class="btn" id="exportBtn" href="#" target="_blank">Export data &darr;</a>
         </div>
-      </div>
-      <div class="card">
-        <h2 class="mt-0">Company Totals</h2>
-        <div class="summary-grid" id="companyStats"></div>
-      </div>
-      <div class="card">
-        <h2 class="mt-0">Hours by Employee</h2>
-        <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable data table"><table>
+        <div class="report-range">
+          <label>Hours from <input type="date" id="statsFrom"></label>
+          <label>To <input type="date" id="statsTo"></label>
+          <button class="btn secondary" id="applyStats">Apply dates</button>
+          <span class="muted" id="reportRangeLabel"></span>
+        </div>
+        <div class="project-filters">
+          <label class="search-field">Find a project<input type="search" id="projectSearch" placeholder="Search by project name"></label>
+          <label>Status<select id="projectStatus"><option value="all">All projects</option><option value="active">Active</option><option value="archived">Archived</option></select></label>
+          <label>Sort by<select id="projectSort"><option value="hours-desc">Most hours</option><option value="hours-asc">Least hours</option><option value="name-asc">Name: A–Z</option><option value="name-desc">Name: Z–A</option><option value="newest">Date added: newest</option><option value="oldest">Date added: oldest</option></select></label>
+        </div>
+        <p id="statsError" class="error-msg" role="alert"></p>
+        <div class="directory-meta"><span id="projectCount" role="status"></span><span>Hours reflect the selected dates</span></div>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Project reports"><table class="project-report-table">
+          <thead><tr><th>Compare</th><th>Project</th><th>Status</th><th>Date added</th><th class="numeric">Recorded hours</th><th></th></tr></thead>
+          <tbody id="statsByProject"></tbody>
+        </table></div>
+        <div class="comparison-tray"><span id="compareSelection" role="status">Select two projects to compare.</span><div class="flex-row"><button class="btn secondary" id="clearComparison">Clear selection</button><button class="btn" id="compareProjects" disabled>Compare projects &rarr;</button></div></div>
+      </section>
+      <section class="card" aria-labelledby="employeeHoursHeading">
+        <div class="section-heading"><div><span class="eyebrow">Across the studio</span><h2 id="employeeHoursHeading">Hours by employee</h2></div></div>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Employee hours"><table>
           <thead><tr><th>Employee</th><th>Work Hrs</th><th>Extra Hrs</th><th>Sick (days)</th><th>Local Leave (days)</th><th>Emergency (days)</th></tr></thead>
           <tbody id="statsByEmployee"></tbody>
         </table></div>
-      </div>
-      <div class="card">
-        <h2 class="mt-0">Hours by Project</h2>
-        <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable data table"><table>
-          <thead><tr><th>Project Name</th><th>Hours</th></tr></thead>
-          <tbody id="statsByProject"></tbody>
-        </table></div>
-      </div>
-      <div class="card">
-        <h2 class="mt-0">Project Details</h2>
-        <p class="muted" style="margin-top:-8px;font-size:13px">Hours worked by each employee on each project, for the date range above. Employees with no hours on a project aren't listed under it.</p>
-        <div id="projectDetailContainer"></div>
-      </div>
+      </section>
+      <section class="card company-overview" aria-labelledby="companyHeading">
+        <span class="eyebrow">Company overview</span><h2 id="companyHeading">The bigger picture</h2>
+        <div class="summary-grid" id="companyStats"></div>
+      </section>
     </div>
 
     <!-- EMPLOYEES TAB -->
@@ -157,6 +159,7 @@
   </main>
 
   <script src="/js/api.js"></script>
+  <script src="/js/reports.js"></script>
   <script src="/js/admin.js"></script>
 </body>
 </html>

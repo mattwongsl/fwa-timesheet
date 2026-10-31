@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project report · FWA</title>
+<link rel="stylesheet" href="/css/style.css">
+<link rel="stylesheet" href="/css/reports.css">
+</head>
+<body class="admin-page project-page">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="topbar">
+    <a class="brand" href="/admin.html" aria-label="FWA administration home">
+      <img class="brand-logo" src="/images/fwa-logo.jpg" alt="FWA Architects" width="64" height="52">
+      <span class="brand-name">Francis Wong<span>Architects</span></span>
+      <span class="brand-product">Timesheets</span>
+    </a>
+    <nav aria-label="Main navigation">
+      <a href="/employee.html">My Timesheet</a>
+      <a href="/admin.html" class="active" aria-current="page">Admin Dashboard</a>
+      <a href="#" id="logoutLink">Log out</a>
+    </nav>
+  </header>
+
+  <main class="container" id="main">
+    <a class="back-link" id="backToReports" href="/admin.html#stats">&larr; All projects</a>
+    <div class="page-heading"><div><span class="eyebrow">Project intelligence</span><h1 id="projectHeading">Project report</h1><p id="projectSubtitle">An individual view of the people and time behind your project.</p></div></div>
+    <section class="card report-controls" aria-label="Project report settings">
+      <div class="report-range">
+        <label>Hours from <input type="date" id="detailFrom"></label>
+        <label>To <input type="date" id="detailTo"></label>
+        <label class="compare-field">Compare with<select id="compareWith"><option value="">No comparison</option></select></label>
+        <button class="btn" id="applyProjectDates">Update report</button>
+      </div>
+      <p class="muted report-hint">Compare a maximum of two projects using the same date range.</p>
+    </section>
+    <p id="projectError" class="error-msg" role="alert"></p>
+    <div id="projectLoading" class="card empty-state" role="status">Loading project hours…</div>
+    <div id="projectResults" class="project-detail-grid" hidden></div>
+    <section id="comparisonSection" class="card" aria-labelledby="comparisonHeading" hidden>
+      <span class="eyebrow">Side by side</span><h2 id="comparisonHeading">Employee comparison</h2>
+      <p id="comparisonSummary" class="muted"></p>
+      <div id="comparisonBars" class="comparison-bars"></div>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="Employee hours across the two selected projects"><table>
+        <thead id="comparisonTableHead"></thead><tbody id="comparisonTableBody"></tbody>
+      </table></div>
+    </section>
+    <footer class="site-footer"><span>Francis Wong Associates Ltd.</span><span>FWA / Project intelligence</span></footer>
+  </main>
+  <script src="/js/api.js"></script>
+  <script src="/js/reports.js"></script>
+  <script src="/js/project.js"></script>
+</body>
+</html>

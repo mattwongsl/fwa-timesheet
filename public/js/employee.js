@@ -256,15 +256,14 @@ function renderDays() {
     header.className = 'day-header';
     header.innerHTML = `
       <div>
+        <time class="day-date" datetime="${day.date}">${fmtDate(day.date)}</time>
         <span class="day-name">${DAY_NAMES[idx]}</span>
-        <span class="day-date">${fmtDate(day.date)}</span>
-        <span class="day-type-label ${dayTypeClass(day.type)}">
-          ${LEAVE_LABELS[day.type]}
-        </span>
       </div>
     `;
 
     const typeSelect = document.createElement('select');
+    typeSelect.className = 'day-type-select';
+    typeSelect.setAttribute('aria-label', `Day type for ${DAY_NAMES[idx]}, ${fmtDate(day.date)}`);
     ['work', 'sick_leave', 'local_leave', 'emergency_leave', 'public_holiday'].forEach((t) => {
       const opt = document.createElement('option');
       opt.value = t;

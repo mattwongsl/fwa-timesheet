@@ -76,6 +76,7 @@ async function init() {
 
   document.getElementById('applyFilter').addEventListener('click', loadTimesheets);
   document.getElementById('applyStats').addEventListener('click', loadStats);
+  initializeProjectReports();
   document.getElementById('addEmpBtn').addEventListener('click', addEmployee);
   document.getElementById('addProjBtn').addEventListener('click', addProject);
   document.getElementById('editSaveBtn').addEventListener('click', saveEditedTimesheet);
@@ -92,8 +93,10 @@ async function init() {
   const today = new Date();
   const jan1 = `${today.getFullYear()}-01-01`;
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  document.getElementById('statsFrom').value = jan1;
-  document.getElementById('statsTo').value = todayStr;
+  const reportParams = new URLSearchParams(window.location.search);
+  document.getElementById('statsFrom').value = Reports.validDate(reportParams.get('from')) ? reportParams.get('from') : jan1;
+  document.getElementById('statsTo').value = Reports.validDate(reportParams.get('to')) ? reportParams.get('to') : todayStr;
+  if (window.location.hash === '#stats') switchTab('stats');
 
   await loadTimesheets();
   await loadRequests();
@@ -349,88 +352,92 @@ async function loadRequests() {
 
 // ---------------- STATS ----------------
 
+let reportCatalog = [];
+let reportRange = null;
+let statsLoadVersion = 0;
+const comparedProjects = new Set();
+
+function initializeProjectReports() {
+  for (const id of ['projectSearch', 'projectStatus', 'projectSort']) {
+    document.getElementById(id).addEventListener(id === 'projectSearch' ? 'input' : 'change', renderProjectDirectory);
+  }
+  document.getElementById('clearComparison').addEventListener('click', () => { comparedProjects.clear(); renderProjectDirectory(); });
+  document.getElementById('compareProjects').addEventListener('click', () => {
+    if (comparedProjects.size !== 2 || !reportRange) return;
+    const [first, second] = [...comparedProjects];
+    window.location.href = Reports.projectUrl(first, reportRange.from, reportRange.to, second);
+  });
+}
+
 async function loadStats() {
   const from = document.getElementById('statsFrom').value;
   const to = document.getElementById('statsTo').value;
-  const params = new URLSearchParams();
-  if (from) params.set('from', from);
-  if (to) params.set('to', to);
-
-  let data;
+  const error = document.getElementById('statsError');
+  const version = ++statsLoadVersion;
+  try { Reports.validateRange(from, to); } catch (e) { error.textContent = e.message; return; }
+  error.textContent = '';
+  const params = new URLSearchParams({ from, to });
+  let data, projects;
   try {
-    data = await Api.get(`/api/admin/stats?${params.toString()}`);
+    [data, projects] = await Promise.all([
+      Api.get(`/api/admin/stats?${params}`),
+      Api.get('/api/projects?all=1')
+    ]);
   } catch (e) {
-    document.getElementById('companyStats').innerHTML = `<div class="error-msg">Couldn't load dashboard stats: ${e.message}</div>`;
+    if (version === statsLoadVersion) error.textContent = `Couldn't update reports: ${e.message} Previous results, if any, remain visible.`;
     return;
   }
-
+  if (version !== statsLoadVersion) return;
+  reportRange = { from, to };
+  reportCatalog = Reports.catalog(projects.projects, data.by_project);
+  for (const id of comparedProjects) if (!reportCatalog.some((p) => p.id === id)) comparedProjects.delete(id);
+  renderProjectDirectory();
+  document.getElementById('reportRangeLabel').textContent = `${Reports.formatDate(from)} – ${Reports.formatDate(to)}`;
   const c = data.company_totals;
-  document.getElementById('companyStats').innerHTML = `
-    <div class="stat"><div class="value">${fmtHours(c.work_hours)}</div><div class="label">Work Hours</div></div>
-    <div class="stat"><div class="value">${fmtHours(c.extra_hours)}</div><div class="label">Extra Hours</div></div>
-    <div class="stat"><div class="value">${fmtHours(c.sick_leave_days)}</div><div class="label">Sick Leave (days)</div></div>
-    <div class="stat"><div class="value">${fmtHours(c.local_leave_days)}</div><div class="label">Local Leave (days)</div></div>
-    <div class="stat"><div class="value">${fmtHours(c.emergency_leave_days)}</div><div class="label">Emergency Leave (days)</div></div>
-  `;
-
-  // Hours worked broken down per individual employee (not just the company total).
+  document.getElementById('companyStats').innerHTML = [
+    ['Work hours', c.work_hours], ['Extra hours', c.extra_hours], ['Sick leave (days)', c.sick_leave_days],
+    ['Local leave (days)', c.local_leave_days], ['Emergency leave (days)', c.emergency_leave_days]
+  ].map(([label, value]) => `<div class="stat"><div class="value">${fmtHours(value)}</div><div class="label">${label}</div></div>`).join('');
   document.getElementById('statsByEmployee').innerHTML = data.by_employee.map((r) => `
-    <tr>
-      <td><strong>${r.employee_name}</strong></td>
-      <td>${fmtHours(r.work_hours)}</td>
-      <td>${fmtHours(r.extra_hours)}</td>
-      <td>${fmtHours(r.sick_leave_days)}</td>
-      <td>${fmtHours(r.local_leave_days)}</td>
-      <td>${fmtHours(r.emergency_leave_days)}</td>
-    </tr>`).join('');
-
-  document.getElementById('statsByProject').innerHTML = data.by_project.map((r) => `
-    <tr><td>${r.project_name}</td><td>${fmtHours(r.hours)}</td></tr>
-  `).join('') || '<tr><td colspan="2" class="muted">No project hours logged in this range.</td></tr>';
-
-  renderProjectDetails(data.by_employee_project || []);
-
-  const exportParams = new URLSearchParams();
-  if (from) exportParams.set('from', from);
-  if (to) exportParams.set('to', to);
-  document.getElementById('exportBtn').href = `/api/admin/export.xlsx?${exportParams.toString()}`;
+    <tr><td><strong>${Reports.escape(r.employee_name)}</strong></td><td>${fmtHours(r.work_hours)}</td>
+      <td>${fmtHours(r.extra_hours)}</td><td>${fmtHours(r.sick_leave_days)}</td><td>${fmtHours(r.local_leave_days)}</td><td>${fmtHours(r.emergency_leave_days)}</td></tr>
+  `).join('') || '<tr><td colspan="6" class="muted">No employee hours in this range.</td></tr>';
+  document.getElementById('exportBtn').href = `/api/admin/export.xlsx?${params}`;
 }
 
-// Groups the employee x project rows by project, so the admin can see - for
-// each project - which employees worked on it and how many hours, without
-// listing employees who never touched that project.
-function renderProjectDetails(rows) {
-  const container = document.getElementById('projectDetailContainer');
-
-  if (rows.length === 0) {
-    container.innerHTML = '<p class="muted">No project hours logged in this range.</p>';
-    return;
-  }
-
-  const byProject = new Map(); // project_id -> { name, employees: [{name, hours}] }
-  for (const row of rows) {
-    if (!byProject.has(row.project_id)) {
-      byProject.set(row.project_id, { name: row.project_name, employees: [] });
-    }
-    byProject.get(row.project_id).employees.push({ name: row.employee_name, hours: Number(row.hours) });
-  }
-
-  const projectIds = [...byProject.keys()].sort((a, b) => byProject.get(a).name.localeCompare(byProject.get(b).name));
-
-  container.innerHTML = projectIds.map((pid) => {
-    const proj = byProject.get(pid);
-    const sortedEmployees = [...proj.employees].sort((a, b) => b.hours - a.hours);
-    const total = sortedEmployees.reduce((sum, e) => sum + e.hours, 0);
-    const rowsHtml = sortedEmployees.map((e) => `<tr><td>${e.name}</td><td>${fmtHours(e.hours)}</td></tr>`).join('');
-    return `
-      <div style="margin-bottom:20px">
-        <div style="font-weight:700;margin-bottom:6px">${proj.name} <span class="muted" style="font-weight:400">(${fmtHours(total)} hrs total)</span></div>
-        <table>
-          <thead><tr><th>Employee</th><th>Hours</th></tr></thead>
-          <tbody>${rowsHtml}</tbody>
-        </table>
-      </div>`;
-  }).join('');
+function renderProjectDirectory() {
+  if (!reportRange) return;
+  const rows = Reports.filterProjects(reportCatalog, {
+    search: document.getElementById('projectSearch').value,
+    status: document.getElementById('projectStatus').value,
+    sort: document.getElementById('projectSort').value
+  });
+  const body = document.getElementById('statsByProject');
+  body.innerHTML = rows.map((p) => {
+    const url = Reports.escape(Reports.projectUrl(p.id, reportRange.from, reportRange.to));
+    return `<tr>
+      <td><input type="checkbox" data-compare-id="${p.id}" aria-label="Compare ${Reports.escape(p.name)}" ${comparedProjects.has(p.id) ? 'checked' : ''} ${comparedProjects.size === 2 && !comparedProjects.has(p.id) ? 'disabled' : ''}></td>
+      <td><a class="project-name-link" href="${url}">${Reports.escape(p.name)}</a></td>
+      <td><span class="badge ${p.archived ? 'locked' : 'open'}">${p.id === 0 ? 'Other work' : p.archived ? 'Archived' : 'Active'}</span></td>
+      <td class="date-cell">${Reports.formatDate(p.created_at)}</td><td class="numeric project-hours">${Reports.hours(p.hours)} <span>hrs</span></td>
+      <td><a class="btn secondary small" href="${url}" aria-label="View ${Reports.escape(p.name)}">View project &rarr;</a></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" class="empty-state">No projects match these filters. Try a different name or status.</td></tr>';
+  body.querySelectorAll('[data-compare-id]').forEach((input) => input.addEventListener('change', () => {
+    const id = Number(input.dataset.compareId);
+    if (input.checked && comparedProjects.size < 2) comparedProjects.add(id);
+    else comparedProjects.delete(id);
+    const names = [...comparedProjects].map((value) => reportCatalog.find((p) => p.id === value)?.name).filter(Boolean);
+    document.getElementById('compareSelection').textContent = names.length ? `${names.length}/2 selected: ${names.join(' + ')}` : 'Select two projects to compare.';
+    document.getElementById('compareProjects').disabled = comparedProjects.size !== 2;
+    document.getElementById('clearComparison').disabled = comparedProjects.size === 0;
+    body.querySelectorAll('[data-compare-id]').forEach((checkbox) => { checkbox.disabled = comparedProjects.size === 2 && !comparedProjects.has(Number(checkbox.dataset.compareId)); });
+  }));
+  document.getElementById('projectCount').textContent = `${rows.length} of ${reportCatalog.length} projects`;
+  const selected = [...comparedProjects].map((id) => reportCatalog.find((p) => p.id === id)?.name).filter(Boolean);
+  document.getElementById('compareSelection').textContent = selected.length ? `${selected.length}/2 selected: ${selected.join(' + ')}` : 'Select two projects to compare.';
+  document.getElementById('compareProjects').disabled = comparedProjects.size !== 2;
+  document.getElementById('clearComparison').disabled = comparedProjects.size === 0;
 }
 
 // ---------------- EMPLOYEES ----------------
