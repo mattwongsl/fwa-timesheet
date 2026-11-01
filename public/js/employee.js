@@ -358,6 +358,7 @@ function renderProjectRows(wrap, day, dayIdx) {
     row.className = 'project-row';
 
     const select = document.createElement('select');
+    select.id = `employee-project-${dayIdx}-${projIdx}`;
     const otherOption = document.createElement('option');
     otherOption.value = 'other'; otherOption.textContent = 'Other';
     if (proj.entry_type === 'other') otherOption.selected = true;
@@ -366,6 +367,7 @@ function renderProjectRows(wrap, day, dayIdx) {
       const opt = document.createElement('option');
       opt.value = p.id;
       opt.textContent = p.name;
+      opt.disabled = day.projects.some((entry, i) => i !== projIdx && Number(entry.project_id) === p.id);
       if (Number(proj.project_id) === p.id) opt.selected = true;
       select.appendChild(opt);
     });
@@ -379,8 +381,9 @@ function renderProjectRows(wrap, day, dayIdx) {
         }
         proj.entry_type = 'work'; proj.project_id = projectId;
       }
+      renderProjectRows(wrap, day, dayIdx);
     });
-    row.appendChild(select);
+    row.appendChild(ProjectPicker.enhance(select, `Project for ${DAY_NAMES[dayIdx]}, row ${projIdx + 1}`));
 
     if (proj.entry_type === 'other') {
       const description = document.createElement('textarea');

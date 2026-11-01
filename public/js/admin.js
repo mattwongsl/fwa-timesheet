@@ -250,6 +250,7 @@ function renderEditProjectRows(wrap, day) {
     row.className = 'project-row';
 
     const select = document.createElement('select');
+    select.id = `admin-project-${day.date}-${projIdx}`;
     const otherOption = document.createElement('option');
     otherOption.value = 'other'; otherOption.textContent = 'Other';
     if (proj.entry_type === 'other') otherOption.selected = true;
@@ -258,6 +259,7 @@ function renderEditProjectRows(wrap, day) {
       const opt = document.createElement('option');
       opt.value = p.id;
       opt.textContent = p.name;
+      opt.disabled = day.projects.some((entry, i) => i !== projIdx && Number(entry.project_id) === p.id);
       if (Number(proj.project_id) === p.id) opt.selected = true;
       select.appendChild(opt);
     });
@@ -270,7 +272,7 @@ function renderEditProjectRows(wrap, day) {
       }
       renderEditDays();
     });
-    row.appendChild(select);
+    row.appendChild(ProjectPicker.enhance(select, `Project for ${day.date}, row ${projIdx + 1}`));
     if (proj.entry_type === 'other') {
       const description = document.createElement('textarea'); description.rows = 1; description.placeholder = 'Describe what you worked on'; description.value = proj.other_description || '';
       description.addEventListener('input', () => { proj.other_description = description.value; }); row.appendChild(description);
