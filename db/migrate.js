@@ -1,17 +1,20 @@
 require('dotenv').config();
-const fs = require('fs');
-const path = require('path');
 const pool = require('./pool');
+const { migrate } = require('./migrationRunner');
 
-async function migrate() {
-  const sql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
-  console.log('Running schema migration...');
-  await pool.query(sql);
-  console.log('Migration complete.');
-  await pool.end();
+async function main() {
+  try {
+    const applied = await migrate(pool);
+    console.log(applied.length ? `Migration complete: ${applied.map(({ version, name }) => `${version}_${name}`).join(', ')}.` : 'Database is already up to date.');
+  } catch (err) {
+    console.error('Migration failed:', err.message);
+    if (err.detail) console.error(err.detail);
+    if (err.hint) console.error(err.hint);
+    process.exitCode = 1;
+  } finally {
+    await pool.end();
+  }
 }
 
-migrate().catch((err) => {
-  console.error('Migration failed:', err);
-  process.exit(1);
-});
+if (require.main === module) main();
+module.exports = { main };

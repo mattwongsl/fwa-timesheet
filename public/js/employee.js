@@ -14,6 +14,14 @@ let currentWeekStart = null; // YYYY-MM-DD, set from server response
 let currentTimesheet = null;
 let currentDays = [];
 let editable = true;
+let saveInProgress = false;
+let saveMessageTimer = null;
+let weekLoadVersion = 0;
+let savedDaysSnapshot = null;
+
+function hasUnsavedTimesheetChanges() {
+  return currentTimesheet !== null && savedDaysSnapshot !== null && JSON.stringify(currentDays) !== savedDaysSnapshot;
+}
 
 function formatLocalDate(date) {
   const y = date.getFullYear();
@@ -147,10 +155,6 @@ function renderHoursProgress(day) {
   `;
 }
 
-function roundHalfHour(value) {
-  const number = Number(value);
-  return Number.isFinite(number) && number > 0 ? Math.round(number * 2) / 2 : 0;
-}
 function weekNumber(weekStart) {
   const year = Number(weekStart.slice(0, 4));
   const jan7 = new Date(`${year}-01-07T00:00:00`);
@@ -201,7 +205,11 @@ async function shiftWeek(n) {
 }
 
 async function loadWeek(weekStart) {
+  if (hasUnsavedTimesheetChanges() && !confirm('This timesheet has unsaved edits. Discard them and load the selected week?')) return;
+  const loadVersion = ++weekLoadVersion;
   const data = await Api.get(`/api/timesheets/mine?week=${weekStart}`);
+  if (loadVersion !== weekLoadVersion) return;
+  clearTimeout(saveMessageTimer);
   currentWeekStart = data.timesheet.week_start;
   currentTimesheet = data.timesheet;
   currentDays = data.days;
@@ -241,6 +249,7 @@ async function loadWeek(weekStart) {
   document.getElementById('submitBtn').disabled = !editable;
 
   renderDays();
+  savedDaysSnapshot = JSON.stringify(currentDays);
   renderSummary(data.summary);
 }
 
@@ -271,9 +280,12 @@ function renderDays() {
       if (day.type === t) opt.selected = true;
       typeSelect.appendChild(opt);
     });
-    typeSelect.disabled = !editable;
+    const includesFrozenProject = day.projects.some((project) => TimesheetPayload.frozenProject(project, projects));
+    typeSelect.disabled = !editable || includesFrozenProject;
+    if (includesFrozenProject) typeSelect.title = 'Unarchive this day’s historical projects before changing its type.';
     typeSelect.addEventListener('change', () => {
       day.type = typeSelect.value;
+      if (['sick_leave', 'local_leave', 'emergency_leave'].includes(day.type) && ![0.5, 1].includes(Number(day.leave_days))) day.leave_days = 1;
       renderDays();
     });
     header.appendChild(typeSelect);
@@ -288,9 +300,9 @@ function renderDays() {
           daysInput.max = '1';
           daysInput.step = '0.5';
           daysInput.style.width = '90px';
-          daysInput.value = day.leave_days || 1;
+          daysInput.value = day.leave_days ?? 1;
           daysInput.disabled = !editable;
-          daysInput.addEventListener('change', () => { day.leave_days = roundHalfHour(daysInput.value); renderDays(); });
+          daysInput.addEventListener('change', () => { day.leave_days = daysInput.value; renderDays(); });
           row.appendChild(daysInput);
           card.appendChild(row);
         } else if (day.type === 'public_holiday') {
@@ -351,11 +363,12 @@ function renderDays() {
 function renderProjectRows(wrap, day, dayIdx) {
   wrap.innerHTML = '';
   if (day.projects.length === 0) {
-    day.projects.push({ project_id: projects[0] ? projects[0].id : null, hours: 0 });
+    day.projects.push(projects[0] ? { project_id: projects[0].id, hours: 0 } : { entry_type: 'other', hours: 0, other_description: '' });
   }
   day.projects.forEach((proj, projIdx) => {
     const row = document.createElement('div');
     row.className = 'project-row';
+    const frozen = TimesheetPayload.frozenProject(proj, projects);
 
     const select = document.createElement('select');
     select.id = `employee-project-${dayIdx}-${projIdx}`;
@@ -371,7 +384,14 @@ function renderProjectRows(wrap, day, dayIdx) {
       if (Number(proj.project_id) === p.id) opt.selected = true;
       select.appendChild(opt);
     });
-    select.disabled = !editable;
+    if (frozen) {
+      const historical = document.createElement('option');
+      historical.value = proj.project_id;
+      historical.textContent = `${proj.project_name || `Project ${proj.project_id}`} (archived / unavailable)`;
+      historical.selected = true;
+      select.appendChild(historical);
+    }
+    select.disabled = !editable || frozen;
     select.addEventListener('change', () => {
       if (select.value === 'other') { proj.entry_type = 'other'; proj.project_id = null; }
       else {
@@ -398,13 +418,17 @@ function renderProjectRows(wrap, day, dayIdx) {
     hoursInput.min = '0';
     hoursInput.max = '24';
     hoursInput.step = '0.5';
-    hoursInput.value = fmtHours(proj.hours);
-    hoursInput.disabled = !editable;
+    hoursInput.value = proj.hours ?? '';
+    hoursInput.disabled = !editable || frozen;
+    const invalidHours = TimesheetPayload.hourError(proj.hours);
+    hoursInput.setCustomValidity(invalidHours);
+    hoursInput.setAttribute('aria-invalid', String(!!invalidHours));
+    if (invalidHours) hoursInput.title = invalidHours;
     hoursInput.addEventListener('input', () => { proj.hours = hoursInput.value; });
-    hoursInput.addEventListener('blur', () => { proj.hours = roundHalfHour(hoursInput.value); renderDays(); });
+    hoursInput.addEventListener('blur', () => { renderDays(); });
     row.appendChild(hoursInput);
 
-    if (editable && day.projects.length > 1) {
+    if (editable && !frozen && day.projects.length > 1) {
       const removeBtn = document.createElement('button');
       removeBtn.className = 'btn danger small';
       removeBtn.textContent = '✕';
@@ -416,6 +440,11 @@ function renderProjectRows(wrap, day, dayIdx) {
     }
 
     wrap.appendChild(row);
+    if (frozen) {
+      const note = document.createElement('p'); note.className = 'info-msg';
+      note.textContent = 'Historical project hours are read-only. An admin must unarchive the project before these hours can change.';
+      wrap.appendChild(note);
+    }
   });
 }
 
@@ -436,55 +465,79 @@ function renderSummary(summary) {
     </div>`).join('');
 }
 
-function validateBeforeSave() {
-  for (let i = 0; i < currentDays.length; i++) {
-    const day = currentDays[i];
-    if (day.type === 'work' || isHalfDayLeave(day)) {
-      const total = dayWorkTotal(day);
-      if (
-        isHalfDayLeave(day) && total < 3.5 && (!day.justification || !day.justification.trim())
-      ) {
-        return `Please add a reason for ${DAY_NAMES[i]} because ${fmtHours(total)} hrs is below the 3.5-hour half-day minimum.`;
-      }
-      for (const p of day.projects || []) if (p.entry_type === 'other' && Number(p.hours) > 0 && !(p.other_description || '').trim()) return `Please describe the Other work on ${DAY_NAMES[i]}.`;
-      if (!isHalfDayLeave(day) && total < STANDARD_WORKDAY_HOURS && (!day.justification || !day.justification.trim())) {
-        return `Please add a reason for ${DAY_NAMES[i]} (${fmtHours(total)} hrs is under the ${STANDARD_WORKDAY_HOURS}-hour minimum).`;
-      }
-    }
-  }
-  return null;
-}
-
 async function saveDraft() {
+  if (saveInProgress) return false;
   const msg = document.getElementById('saveMsg');
-  const validationError = validateBeforeSave();
-  if (validationError) {
-    msg.textContent = validationError;
-    return false;
-  }
-  msg.textContent = 'Saving...';
+  const savedId = currentTimesheet?.id;
+  const loadVersion = weekLoadVersion;
+  const submittedSnapshot = JSON.stringify(currentDays);
+  clearTimeout(saveMessageTimer);
   try {
-    const data = await Api.put(`/api/timesheets/${currentTimesheet.id}/entries`, { days: currentDays });
+    const days = TimesheetPayload.serializeDays(currentDays);
+    const version = TimesheetPayload.version(currentTimesheet.version);
+    saveInProgress = true;
+    document.getElementById('saveBtn').disabled = true;
+    document.getElementById('submitBtn').disabled = true;
+    msg.textContent = 'Saving...';
+    const data = await Api.put(`/api/timesheets/${savedId}/entries`, { days, version });
+    if (currentTimesheet.id !== savedId || loadVersion !== weekLoadVersion) return false;
+    TimesheetPayload.version(data.timesheet?.version);
+    currentTimesheet = data.timesheet;
+    savedDaysSnapshot = submittedSnapshot;
     renderSummary(data.summary);
+    if (JSON.stringify(currentDays) !== submittedSnapshot) {
+      msg.textContent = 'The earlier draft was saved. Newer edits are still on this page and have not been saved. Review and save them before submitting.';
+      return false;
+    }
     msg.textContent = 'Saved.';
-    setTimeout(() => { msg.textContent = ''; }, 2000);
+    saveMessageTimer = setTimeout(() => { if (msg.textContent === 'Saved.') msg.textContent = ''; }, 2000);
     return true;
-  } catch (e) {
-    msg.textContent = e.message;
+  } catch (error) {
+    if (currentTimesheet?.id === savedId && loadVersion === weekLoadVersion) msg.textContent = TimesheetPayload.errorMessage(error);
     return false;
+  } finally {
+    saveInProgress = false;
+    document.getElementById('saveBtn').disabled = !editable;
+    document.getElementById('submitBtn').disabled = !editable;
   }
 }
 
 async function submitTimesheet() {
   if (!confirm('Submit this timesheet for the week? It will be locked and you will need admin approval to change it after this.')) return;
+  const submittedId = currentTimesheet.id;
+  const submittedWeek = currentWeekStart;
+  const loadVersion = weekLoadVersion;
   const ok = await saveDraft();
-  if (!ok) return;
+  if (!ok || currentTimesheet.id !== submittedId || loadVersion !== weekLoadVersion) return;
+  const submittedSnapshot = JSON.stringify(currentDays);
+  document.getElementById('saveBtn').disabled = true;
+  document.getElementById('submitBtn').disabled = true;
+  document.querySelectorAll('#daysContainer input, #daysContainer select, #daysContainer textarea, #daysContainer button').forEach((control) => { control.disabled = true; });
   try {
-    await Api.post(`/api/timesheets/${currentTimesheet.id}/submit`);
-    await loadWeek(currentWeekStart);
+    const data = await Api.post(`/api/timesheets/${submittedId}/submit`, { version: TimesheetPayload.version(currentTimesheet.version) });
+    if (currentTimesheet.id !== submittedId || loadVersion !== weekLoadVersion) return;
+    currentTimesheet = data.timesheet;
+    if (JSON.stringify(currentDays) !== submittedSnapshot) {
+      // Never replace a newer editing model with the earlier submitted snapshot.
+      editable = false;
+      renderDays();
+      document.getElementById('statusBadge').innerHTML = statusBadgeHtml(submittedWeek, false);
+      document.getElementById('lockedNotice').style.display = 'block';
+      document.getElementById('lockedNotice').textContent = 'The saved draft was submitted. Newer unsaved edits remain shown below; request an unlock before saving those edits.';
+      document.getElementById('unlockRequestArea').style.display = 'block';
+      document.getElementById('saveMsg').textContent = 'The earlier saved draft was submitted. Newer edits are still here and were not submitted.';
+      await loadHistory();
+      return;
+    }
+    await loadWeek(submittedWeek);
     await loadHistory();
-  } catch (e) {
-    document.getElementById('saveMsg').textContent = e.message;
+  } catch (error) {
+    if (currentTimesheet?.id === submittedId && loadVersion === weekLoadVersion) {
+      renderDays();
+      document.getElementById('saveBtn').disabled = !editable;
+      document.getElementById('submitBtn').disabled = !editable;
+      document.getElementById('saveMsg').textContent = TimesheetPayload.errorMessage(error);
+    }
   }
 }
 
@@ -492,11 +545,12 @@ async function requestUnlock() {
   const reason = document.getElementById('unlockReason').value.trim();
   const msgEl = document.getElementById('unlockMsg');
   try {
-    await Api.post(`/api/timesheets/${currentTimesheet.id}/request-unlock`, { reason });
+    const data = await Api.post(`/api/timesheets/${currentTimesheet.id}/request-unlock`, { reason, version: TimesheetPayload.version(currentTimesheet.version) });
+    if (data.timesheet) currentTimesheet = data.timesheet;
     msgEl.textContent = 'Unlock request sent to admin.';
     msgEl.className = 'success-msg';
   } catch (e) {
-    msgEl.textContent = e.message;
+    msgEl.textContent = TimesheetPayload.errorMessage(e);
     msgEl.className = 'error-msg';
   }
 }

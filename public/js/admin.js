@@ -12,7 +12,10 @@ let currentUser = null;
 let allEmployees = [];
 let allProjects = [];
 let editingTimesheetId = null;
+let editingTimesheetVersion = null;
 let editingDays = [];
+let editingSavedSnapshot = null;
+let editingSession = 0;
 
 function fmtDate(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
@@ -22,7 +25,6 @@ function dayWorkTotal(day) {
   return (day.projects || []).reduce((sum, p) => sum + (Number(p.hours) || 0), 0);
 }
 function isHalfDayLeave(day) { return ['sick_leave', 'local_leave', 'emergency_leave'].includes(day.type) && Number(day.leave_days) === 0.5; }
-function roundHalfHour(value) { const n = Number(value); return Number.isFinite(n) && n > 0 ? Math.round(n * 2) / 2 : 0; }
 function weekNumber(weekStart) { const y = Number(weekStart.slice(0, 4)); const jan7 = new Date(`${y}-01-07T00:00:00`); const monday = new Date(jan7); monday.setDate(jan7.getDate() - ((jan7.getDay() + 6) % 7)); return Math.floor((new Date(`${weekStart}T00:00:00`) - monday) / 604800000) + 1; }
 function firstAvailableProjectId(day) { const used = new Set((day.projects || []).map((p) => Number(p.project_id))); const project = allProjects.find((p) => !used.has(p.id)); return project ? project.id : null; }
 function escapeAttr(s) {
@@ -82,10 +84,7 @@ async function init() {
   document.getElementById('editSaveBtn').addEventListener('click', saveEditedTimesheet);
   document.getElementById('editLockBtn').addEventListener('click', () => lockUnlock('lock'));
   document.getElementById('editUnlockBtn').addEventListener('click', () => lockUnlock('unlock'));
-  document.getElementById('editCloseBtn').addEventListener('click', () => {
-    document.getElementById('editPanel').style.display = 'none';
-    editingTimesheetId = null;
-  });
+  document.getElementById('editCloseBtn').addEventListener('click', closeEditPanel);
 
   await loadEmployees();
   await loadProjects();
@@ -141,8 +140,12 @@ async function loadTimesheets() {
 }
 
 async function openEditPanel(timesheetId) {
+  if (hasUnsavedTimesheetChanges() && !confirm('Discard the unsaved changes in this editor and open another timesheet?')) return;
+  const session = ++editingSession;
   const data = await Api.get(`/api/admin/timesheets/${timesheetId}`);
+  if (session !== editingSession) return;
   editingTimesheetId = timesheetId;
+  editingTimesheetVersion = data.timesheet.version;
   editingDays = data.days;
 
   document.getElementById('editTitle').textContent =
@@ -151,7 +154,22 @@ async function openEditPanel(timesheetId) {
   document.getElementById('editPanel').style.display = 'block';
   document.getElementById('editMsg').textContent = '';
   renderEditDays();
+  editingSavedSnapshot = JSON.stringify(editingDays);
   document.getElementById('editPanel').scrollIntoView({ behavior: 'smooth' });
+}
+
+function hasUnsavedTimesheetChanges() {
+  return editingTimesheetId !== null && JSON.stringify(editingDays) !== editingSavedSnapshot;
+}
+
+function closeEditPanel() {
+  if (hasUnsavedTimesheetChanges() && !confirm('Discard your unsaved changes and close this timesheet editor?')) return false;
+  document.getElementById('editPanel').style.display = 'none';
+  editingSession++;
+  editingTimesheetId = null;
+  editingTimesheetVersion = null;
+  editingSavedSnapshot = null;
+  return true;
 }
 
 function renderEditDays() {
@@ -174,7 +192,14 @@ function renderEditDays() {
       if (day.type === t) opt.selected = true;
       typeSelect.appendChild(opt);
     });
-    typeSelect.addEventListener('change', () => { day.type = typeSelect.value; renderEditDays(); });
+    const includesFrozenProject = day.projects.some((project) => TimesheetPayload.frozenProject(project, allProjects));
+    typeSelect.disabled = includesFrozenProject;
+    if (includesFrozenProject) typeSelect.title = 'Unarchive this day’s historical projects before changing its type.';
+    typeSelect.addEventListener('change', () => {
+      day.type = typeSelect.value;
+      if (['sick_leave', 'local_leave', 'emergency_leave'].includes(day.type) && ![0.5, 1].includes(Number(day.leave_days))) day.leave_days = 1;
+      renderEditDays();
+    });
     header.appendChild(typeSelect);
     card.appendChild(header);
 
@@ -203,9 +228,9 @@ function renderEditDays() {
 
       const justWrap = document.createElement('div');
       justWrap.style.marginTop = '6px';
-      if (isHalfDayLeave(day)) justWrap.style.display = 'none';
+      const minimumHours = isHalfDayLeave(day) ? 3.5 : STANDARD_WORKDAY_HOURS;
       justWrap.innerHTML = `<label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">
-        Reason for less than ${STANDARD_WORKDAY_HOURS} hours ${total < STANDARD_WORKDAY_HOURS ? '<span style="color:var(--danger)">(required)</span>' : '(optional)'}
+        Reason for less than ${minimumHours} hours ${total < minimumHours ? '<span style="color:var(--danger)">(required)</span>' : '(optional)'}
       </label>`;
       const justInput = document.createElement('textarea');
       justInput.rows = 2;
@@ -224,8 +249,8 @@ function renderEditDays() {
       daysInput.max = '1';
       daysInput.step = '0.5';
       daysInput.style.width = '90px';
-      daysInput.value = day.leave_days || 1;
-      daysInput.addEventListener('change', () => { day.leave_days = roundHalfHour(daysInput.value); renderEditDays(); });
+      daysInput.value = day.leave_days ?? 1;
+      daysInput.addEventListener('change', () => { day.leave_days = daysInput.value; renderEditDays(); });
       row.appendChild(daysInput);
       card.appendChild(row);
     } else if (day.type === 'public_holiday') {
@@ -243,11 +268,12 @@ function renderEditDays() {
 function renderEditProjectRows(wrap, day) {
   wrap.innerHTML = '';
   if (day.projects.length === 0) {
-    day.projects.push({ project_id: allProjects[0] ? allProjects[0].id : null, hours: 0 });
+    day.projects.push(allProjects[0] ? { project_id: allProjects[0].id, hours: 0 } : { entry_type: 'other', hours: 0, other_description: '' });
   }
   day.projects.forEach((proj, projIdx) => {
     const row = document.createElement('div');
     row.className = 'project-row';
+    const frozen = TimesheetPayload.frozenProject(proj, allProjects);
 
     const select = document.createElement('select');
     select.id = `admin-project-${day.date}-${projIdx}`;
@@ -263,6 +289,14 @@ function renderEditProjectRows(wrap, day) {
       if (Number(proj.project_id) === p.id) opt.selected = true;
       select.appendChild(opt);
     });
+    if (frozen) {
+      const historical = document.createElement('option');
+      historical.value = proj.project_id;
+      historical.textContent = `${proj.project_name || `Project ${proj.project_id}`} (archived / unavailable)`;
+      historical.selected = true;
+      select.appendChild(historical);
+    }
+    select.disabled = frozen;
     select.addEventListener('change', () => {
       if (select.value === 'other') { proj.entry_type = 'other'; proj.project_id = null; }
       else {
@@ -283,12 +317,17 @@ function renderEditProjectRows(wrap, day) {
     hoursInput.min = '0';
     hoursInput.max = '24';
     hoursInput.step = '0.5';
-    hoursInput.value = fmtHours(proj.hours);
+    hoursInput.value = proj.hours ?? '';
+    hoursInput.disabled = frozen;
+    const invalidHours = TimesheetPayload.hourError(proj.hours);
+    hoursInput.setCustomValidity(invalidHours);
+    hoursInput.setAttribute('aria-invalid', String(!!invalidHours));
+    if (invalidHours) hoursInput.title = invalidHours;
     hoursInput.addEventListener('input', () => { proj.hours = hoursInput.value; });
-    hoursInput.addEventListener('blur', () => { proj.hours = roundHalfHour(hoursInput.value); renderEditDays(); });
+    hoursInput.addEventListener('blur', () => { renderEditDays(); });
     row.appendChild(hoursInput);
 
-    if (day.projects.length > 1) {
+    if (!frozen && day.projects.length > 1) {
       const removeBtn = document.createElement('button');
       removeBtn.className = 'btn danger small';
       removeBtn.textContent = '✕';
@@ -297,26 +336,60 @@ function renderEditProjectRows(wrap, day) {
     }
 
     wrap.appendChild(row);
+    if (frozen) {
+      const note = document.createElement('p'); note.className = 'info-msg';
+      note.textContent = 'Historical project hours are read-only. Unarchive the project before changing or removing these hours.';
+      wrap.appendChild(note);
+    }
   });
 }
 
 async function saveEditedTimesheet() {
   const msg = document.getElementById('editMsg');
+  const savedId = editingTimesheetId;
+  const session = editingSession;
   try {
-    await Api.put(`/api/admin/timesheets/${editingTimesheetId}/entries`, { days: editingDays });
-    msg.textContent = 'Saved.';
+    const submittedSnapshot = JSON.stringify(editingDays);
+    const data = await Api.put(`/api/admin/timesheets/${savedId}/entries`, {
+      days: TimesheetPayload.serializeDays(editingDays), version: TimesheetPayload.version(editingTimesheetVersion)
+    });
+    if (editingTimesheetId !== savedId || session !== editingSession) return;
+    editingTimesheetVersion = data.timesheet.version;
+    // Edits typed while the request was in flight must still count as unsaved.
+    editingSavedSnapshot = submittedSnapshot;
+    msg.textContent = hasUnsavedTimesheetChanges() ? 'The earlier draft was saved. Newer edits are still here and remain unsaved.' : 'Saved.';
     await loadTimesheets();
     await loadStats();
-  } catch (e) {
-    msg.textContent = e.message;
+  } catch (error) {
+    if (editingTimesheetId === savedId && session === editingSession) msg.textContent = TimesheetPayload.errorMessage(error);
   }
 }
 
 async function lockUnlock(action) {
-  await Api.post(`/api/admin/timesheets/${editingTimesheetId}/${action}`);
-  await loadTimesheets();
-  document.getElementById('editPanel').style.display = 'none';
-  editingTimesheetId = null;
+  if (hasUnsavedTimesheetChanges()) {
+    document.getElementById('editMsg').textContent = 'Save your changes before locking or unlocking this timesheet. Your unsaved edits are still here.';
+    return;
+  }
+  const targetId = editingTimesheetId;
+  const session = editingSession;
+  const submittedSnapshot = JSON.stringify(editingDays);
+  try {
+    const data = await Api.post(`/api/admin/timesheets/${targetId}/${action}`, { version: TimesheetPayload.version(editingTimesheetVersion) });
+    if (editingTimesheetId !== targetId || session !== editingSession) return;
+    editingTimesheetVersion = data.timesheet.version;
+    await loadTimesheets();
+    if (editingTimesheetId !== targetId || session !== editingSession) return;
+    if (JSON.stringify(editingDays) !== submittedSnapshot || hasUnsavedTimesheetChanges()) {
+      document.getElementById('editMsg').textContent = `The saved timesheet was ${action === 'lock' ? 'locked' : 'unlocked'}. Newer edits are still here and remain unsaved; save them explicitly when ready.`;
+      return;
+    }
+    document.getElementById('editPanel').style.display = 'none';
+    editingTimesheetId = null;
+    editingSavedSnapshot = null;
+    editingSession++;
+  } catch (error) {
+    if (editingTimesheetId === targetId && session === editingSession) document.getElementById('editMsg').textContent = TimesheetPayload.errorMessage(error);
+  }
 }
 
 // ---------------- UNLOCK REQUESTS ----------------
@@ -474,7 +547,6 @@ function renderEmployeesTable() {
           ${e.active
             ? `<button class="btn small danger" data-deactivate="${e.id}">Deactivate</button>`
             : `<button class="btn small secondary" data-reactivate="${e.id}">Reactivate</button>`}
-          <button class="btn small danger" data-delete-emp="${e.id}">Delete</button>
         </td>
       </tr>`;
   }).join('');
@@ -518,24 +590,7 @@ function renderEmployeesTable() {
       alert(`New temporary password for ${data.employee.name}:\n\n${data.temporaryPassword}\n\nShare this with them securely. They should change it after logging in.`);
     });
   });
-  body.querySelectorAll('button[data-delete-emp]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const emp = allEmployees.find((e) => e.id === parseInt(btn.dataset.deleteEmp, 10));
-      const confirmed = confirm(
-        `Permanently delete ${emp ? emp.name : 'this employee'}?\n\n` +
-        `This will also permanently delete ALL of their timesheets. This cannot be undone.`
-      );
-      if (!confirmed) return;
-      try {
-        await Api.delete(`/api/employees/${btn.dataset.deleteEmp}`);
-        await loadEmployees();
-        await loadTimesheets();
-        await loadStats();
-      } catch (e) {
-        alert(e.message);
-      }
-    });
-  });
+
 }
 
 async function loadEmployees() {
@@ -593,7 +648,6 @@ function renderProjectsTable(allProjectsIncludingArchived) {
           ${p.archived
             ? `<button class="btn small secondary" data-unarchive="${p.id}">Unarchive</button>`
             : `<button class="btn small danger" data-archive="${p.id}">Archive</button>`}
-          <button class="btn small danger" data-delete-proj="${p.id}">Delete</button>
         </td>
       </tr>`;
   }).join('');
@@ -629,24 +683,7 @@ function renderProjectsTable(allProjectsIncludingArchived) {
       await loadProjects();
     });
   });
-  body.querySelectorAll('button[data-delete-proj]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const proj = allProjectsIncludingArchived.find((p) => p.id === parseInt(btn.dataset.deleteProj, 10));
-      const confirmed = confirm(
-        `Permanently delete "${proj ? proj.name : 'this project'}"?\n\n` +
-        `Any hours already logged against this project in existing timesheets will also be permanently removed. This cannot be undone.`
-      );
-      if (!confirmed) return;
-      try {
-        await Api.delete(`/api/projects/${btn.dataset.deleteProj}`);
-        await loadProjects();
-        await loadTimesheets();
-        await loadStats();
-      } catch (e) {
-        alert(e.message);
-      }
-    });
-  });
+
 }
 
 async function loadProjects() {

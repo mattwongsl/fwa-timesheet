@@ -22,6 +22,16 @@ const Api = {
   delete(url) { return this.request('DELETE', url); }
 };
 
+let leavingAfterConfirmation = false;
+
+// Ask before a reload or navigation discards changes that never reached the DB.
+window.addEventListener('beforeunload', (event) => {
+  if (!leavingAfterConfirmation && typeof hasUnsavedTimesheetChanges === 'function' && hasUnsavedTimesheetChanges()) {
+    event.preventDefault();
+    event.returnValue = '';
+  }
+});
+
 // Redirects to login if the session is invalid/expired. Returns the user object.
 async function requireSession() {
   try {
@@ -34,7 +44,10 @@ async function requireSession() {
 }
 
 async function logout() {
+  if (typeof hasUnsavedTimesheetChanges === 'function' && hasUnsavedTimesheetChanges()
+      && !confirm('You have unsaved timesheet edits. Discard them and log out?')) return;
   await Api.post('/api/auth/logout');
+  leavingAfterConfirmation = true;
   window.location.href = '/index.html';
 }
 

@@ -1,261 +1,85 @@
 const express = require('express');
 const pool = require('../db/pool');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-const { getDaysForTimesheet, replaceEntries, summarizeDays } = require('../timesheetService');
+const asyncHandler = require('../middleware/asyncHandler');
+const { object, positiveId, date, version, range, httpError } = require('../validation/common');
+const service = require('../timesheetService');
 const ExcelJS = require('exceljs');
-
 const router = express.Router();
 router.use(requireAuth, requireAdmin);
 
-// List timesheets across all employees, with optional filters.
-router.get('/timesheets', async (req, res) => {
-  const { user_id, week, from, to } = req.query;
-  const clauses = [];
-  const params = [];
+router.get('/timesheets', asyncHandler(async (req, res) => {
+  object(req.query, ['user_id', 'week', 'from', 'to'], 'query');
+  const filters = { actorId: req.user.id, admin: true };
+  if (req.query.user_id !== undefined) filters.userId = positiveId(req.query.user_id, 'user_id');
+  for (const key of ['week', 'from', 'to']) if (req.query[key] !== undefined) filters[key] = date(req.query[key], key);
+  if (filters.from && filters.to && filters.from > filters.to) throw httpError(400, 'from must be on or before to.');
+  res.json({ timesheets: await service.listTimesheets(filters) });
+}));
 
-  if (user_id) {
-    params.push(user_id);
-    clauses.push(`t.user_id = $${params.length}`);
-  }
-  if (week) {
-    params.push(week);
-    clauses.push(`t.week_start = $${params.length}`);
-  }
-  if (from) {
-    params.push(from);
-    clauses.push(`t.week_start >= $${params.length}`);
-  }
-  if (to) {
-    params.push(to);
-    clauses.push(`t.week_start <= $${params.length}`);
-  }
-
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  const result = await pool.query(
-    `SELECT t.*, u.name AS employee_name, u.email AS employee_email
-     FROM timesheets t
-     JOIN users u ON u.id = t.user_id
-     ${where}
-     ORDER BY t.week_start DESC, u.name`,
-    params
-  );
-
-  const withSummary = [];
-  for (const ts of result.rows) {
-    const days = await getDaysForTimesheet(ts.id, ts.week_start);
-    withSummary.push({ timesheet: ts, summary: summarizeDays(days) });
-  }
-  res.json({ timesheets: withSummary });
-});
-
-// Full detail (day-by-day) for one timesheet.
-router.get('/timesheets/:id', async (req, res) => {
-  const result = await pool.query(
-    `SELECT t.*, u.name AS employee_name, u.email AS employee_email
-     FROM timesheets t JOIN users u ON u.id = t.user_id WHERE t.id = $1`,
-    [req.params.id]
-  );
-  const timesheet = result.rows[0];
-  if (!timesheet) return res.status(404).json({ error: 'Timesheet not found.' });
-  const days = await getDaysForTimesheet(timesheet.id, timesheet.week_start);
-  res.json({ timesheet, days, summary: summarizeDays(days) });
-});
-
-// Admin can edit any timesheet, locked or not.
-router.put('/timesheets/:id/entries', async (req, res) => {
-  const result = await pool.query('SELECT * FROM timesheets WHERE id = $1', [req.params.id]);
-  const timesheet = result.rows[0];
-  if (!timesheet) return res.status(404).json({ error: 'Timesheet not found.' });
-
-  await replaceEntries(timesheet.id, req.body.days || []);
-  const days = await getDaysForTimesheet(timesheet.id, timesheet.week_start);
-  res.json({ ok: true, days, summary: summarizeDays(days) });
-});
-
-// Explicitly lock a timesheet (blocks the employee from editing it).
-router.post('/timesheets/:id/lock', async (req, res) => {
-  const result = await pool.query(
-    `UPDATE timesheets SET locked = true, admin_unlocked = false, locked_at = now(), locked_by = $2
-     WHERE id = $1 RETURNING *`,
-    [req.params.id, req.user.id]
-  );
-  if (!result.rows[0]) return res.status(404).json({ error: 'Timesheet not found.' });
-  res.json({ timesheet: result.rows[0] });
-});
-
-// Unlock a timesheet so the employee can edit it again, even if it's a past week.
-router.post('/timesheets/:id/unlock', async (req, res) => {
-  const result = await pool.query(
-    `UPDATE timesheets SET locked = false, admin_unlocked = true WHERE id = $1 RETURNING *`,
-    [req.params.id]
-  );
-  if (!result.rows[0]) return res.status(404).json({ error: 'Timesheet not found.' });
-  res.json({ timesheet: result.rows[0] });
-});
-
-// --- Unlock requests inbox ---
-
-router.get('/unlock-requests', async (req, res) => {
+router.get('/timesheets/:id', asyncHandler(async (req, res) => {
+  res.json(await service.getTimesheet(positiveId(req.params.id, 'Timesheet id'), req.user.id, { admin: true }));
+}));
+router.put('/timesheets/:id/entries', asyncHandler(async (req, res) => {
+  res.json(await service.replaceEntries(positiveId(req.params.id, 'Timesheet id'), req.body, req.user.id, { admin: true }));
+}));
+for (const [action, locked] of [['lock', true], ['unlock', false]]) {
+  router.post(`/timesheets/:id/${action}`, asyncHandler(async (req, res) => {
+    object(req.body, ['version']);
+    res.json(await service.setTimesheetLock(positiveId(req.params.id, 'Timesheet id'), version(req.body.version), req.user.id, locked));
+  }));
+}
+router.get('/unlock-requests', asyncHandler(async (req, res) => {
+  object(req.query, ['status'], 'query');
   const status = req.query.status || 'pending';
-  const result = await pool.query(
-    `SELECT ur.*, t.week_start, u.name AS employee_name, u.email AS employee_email
-     FROM unlock_requests ur
-     JOIN timesheets t ON t.id = ur.timesheet_id
-     JOIN users u ON u.id = ur.requested_by
-     WHERE ur.status = $1
-     ORDER BY ur.created_at DESC`,
-    [status]
-  );
+  if (!['pending', 'approved', 'denied'].includes(status)) throw httpError(400, 'Invalid unlock request status.');
+  const result = await pool.query(`SELECT ur.*,t.week_start,u.name AS employee_name,u.email AS employee_email FROM unlock_requests ur JOIN timesheets t ON t.id=ur.timesheet_id JOIN users u ON u.id=ur.requested_by WHERE ur.status=$1 ORDER BY ur.created_at DESC`, [status]);
   res.json({ requests: result.rows });
-});
+}));
+for (const [action, approve] of [['approve', true], ['deny', false]]) {
+  router.post(`/unlock-requests/:id/${action}`, asyncHandler(async (req, res) => {
+    object(req.body ?? {}, []);
+    res.json(await service.resolveUnlockRequest(positiveId(req.params.id, 'Request id'), req.user.id, approve));
+  }));
+}
 
-router.post('/unlock-requests/:id/approve', async (req, res) => {
+router.get('/stats', asyncHandler(async (req, res) => {
+  object(req.query, ['from', 'to'], 'query');
+  const { from, to } = range(req.query);
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-    const reqRow = (await client.query('SELECT * FROM unlock_requests WHERE id = $1', [req.params.id])).rows[0];
-    if (!reqRow) throw Object.assign(new Error('Request not found.'), { status: 404 });
-
-    await client.query(
-      `UPDATE timesheets SET locked = false, admin_unlocked = true WHERE id = $1`,
-      [reqRow.timesheet_id]
-    );
-    const updated = await client.query(
-      `UPDATE unlock_requests SET status = 'approved', resolved_at = now(), resolved_by = $2
-       WHERE id = $1 RETURNING *`,
-      [req.params.id, req.user.id]
-    );
+    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const byProject = await client.query(`SELECT COALESCE(p.id,0) AS project_id,COALESCE(p.name,'Other') AS project_name,SUM(te.hours) AS hours FROM timesheet_entries te LEFT JOIN projects p ON p.id=te.project_id WHERE te.entry_type IN ('work','other') AND te.hours>0 AND te.work_date BETWEEN $1 AND $2 GROUP BY p.id,p.name ORDER BY hours DESC`, [from, to]);
+    const byEmployee = await client.query(`SELECT u.id AS user_id,u.name AS employee_name,
+      COALESCE(SUM(CASE WHEN te.entry_type IN ('work','other') THEN te.hours ELSE 0 END),0) AS work_hours,
+      COALESCE(SUM(CASE WHEN te.entry_type='sick_leave' THEN te.days ELSE 0 END),0) AS sick_leave_days,
+      COALESCE(SUM(CASE WHEN te.entry_type='local_leave' THEN te.days ELSE 0 END),0) AS local_leave_days,
+      COALESCE(SUM(CASE WHEN te.entry_type='emergency_leave' THEN te.days ELSE 0 END),0) AS emergency_leave_days
+      FROM users u LEFT JOIN timesheets t ON t.user_id=u.id
+      LEFT JOIN timesheet_entries te ON te.timesheet_id=t.id AND te.work_date BETWEEN $1 AND $2
+      GROUP BY u.id,u.name,u.active HAVING u.active OR COUNT(te.id)>0 ORDER BY u.name`, [from, to]);
+    const byEmployeeProject = await client.query(`SELECT t.user_id,u.name AS employee_name,COALESCE(te.project_id,0) AS project_id,COALESCE(p.name,'Other') AS project_name,SUM(te.hours) AS hours FROM timesheet_entries te JOIN timesheets t ON t.id=te.timesheet_id JOIN users u ON u.id=t.user_id LEFT JOIN projects p ON p.id=te.project_id WHERE te.entry_type IN ('work','other') AND te.hours>0 AND te.work_date BETWEEN $1 AND $2 GROUP BY t.user_id,u.name,te.project_id,p.name ORDER BY u.name,p.name`, [from, to]);
+    const extra = await client.query(`SELECT user_id,SUM(GREATEST(day_hours-7.5,0)) AS extra_hours FROM (SELECT t.user_id,te.work_date,SUM(te.hours) AS day_hours FROM timesheet_entries te JOIN timesheets t ON t.id=te.timesheet_id WHERE te.entry_type IN ('work','other') AND te.work_date BETWEEN $1 AND $2 GROUP BY t.user_id,te.work_date) daily GROUP BY user_id`, [from, to]);
+    const extraByUser = new Map(extra.rows.map((r) => [r.user_id, Number(r.extra_hours)]));
+    const employees = byEmployee.rows.map((r) => ({ ...r, extra_hours: extraByUser.get(r.user_id) || 0 }));
+    const totals = { work_hours: 0, extra_hours: 0, sick_leave_days: 0, local_leave_days: 0, emergency_leave_days: 0 };
+    for (const row of employees) for (const key of Object.keys(totals)) totals[key] += Number(row[key]);
     await client.query('COMMIT');
-    res.json({ request: updated.rows[0] });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    if (err.status) return res.status(err.status).json({ error: err.message });
-    throw err;
-  } finally {
-    client.release();
-  }
-});
-
-router.post('/unlock-requests/:id/deny', async (req, res) => {
-  const result = await pool.query(
-    `UPDATE unlock_requests SET status = 'denied', resolved_at = now(), resolved_by = $2
-     WHERE id = $1 RETURNING *`,
-    [req.params.id, req.user.id]
-  );
-  if (!result.rows[0]) return res.status(404).json({ error: 'Request not found.' });
-  res.json({ request: result.rows[0] });
-});
-
-// --- Dashboard stats ---
-// Returns totals per employee and per project for a date range, plus company-wide totals.
-router.get('/stats', async (req, res) => {
-  const from = req.query.from || '1970-01-01';
-  const to = req.query.to || '2999-12-31';
-
-  const byProject = await pool.query(
-    `SELECT COALESCE(p.id, 0) AS project_id, COALESCE(p.name, 'Other') AS project_name,
-            COALESCE(SUM(te.hours), 0) AS hours
-     FROM timesheet_entries te
-     LEFT JOIN projects p ON p.id = te.project_id
-     JOIN timesheets t ON t.id = te.timesheet_id
-     WHERE te.entry_type IN ('work', 'other') AND te.work_date BETWEEN $1 AND $2
-     GROUP BY p.id, p.name
-     ORDER BY hours DESC`,
-    [from, to]
-  );
-
-  // Per-employee totals: work hours, leave breakdown by category.
-  const byEmployee = await pool.query(
-    `SELECT u.id AS user_id, u.name AS employee_name,
-            COALESCE(SUM(CASE WHEN te.entry_type IN ('work', 'other') THEN te.hours ELSE 0 END), 0) AS work_hours,
-            COALESCE(SUM(CASE WHEN te.entry_type = 'sick_leave' THEN te.days ELSE 0 END), 0) AS sick_leave_days,
-            COALESCE(SUM(CASE WHEN te.entry_type = 'local_leave' THEN te.days ELSE 0 END), 0) AS local_leave_days,
-            COALESCE(SUM(CASE WHEN te.entry_type = 'emergency_leave' THEN te.days ELSE 0 END), 0) AS emergency_leave_days
-     FROM users u
-     LEFT JOIN timesheets t ON t.user_id = u.id AND t.week_start BETWEEN $1 AND $2
-     LEFT JOIN timesheet_entries te ON te.timesheet_id = t.id
-     WHERE u.active = true
-     GROUP BY u.id, u.name
-     ORDER BY u.name`,
-    [from, to]
-  );
-
-  // Detailed breakdown: hours each employee worked on each specific project,
-  // within the same date range.
-  const byEmployeeProject = await pool.query(
-    `SELECT t.user_id, u.name AS employee_name, COALESCE(te.project_id, 0) AS project_id, COALESCE(p.name, 'Other') AS project_name,
-            SUM(te.hours) AS hours
-     FROM timesheet_entries te
-     JOIN timesheets t ON t.id = te.timesheet_id
-     JOIN users u ON u.id = t.user_id
-     LEFT JOIN projects p ON p.id = te.project_id
-     WHERE te.entry_type IN ('work', 'other')
-       AND t.week_start BETWEEN $1 AND $2 AND u.active = true
-     GROUP BY t.user_id, u.name, te.project_id, p.name
-     ORDER BY u.name, p.name`,
-    [from, to]
-  );
-
-  // Extra hours: for each employee, for each individual day they worked,
-  // any hours beyond the standard 7.5-hour day, summed across the range.
-  const extraHoursResult = await pool.query(
-    `SELECT user_id, employee_name, COALESCE(SUM(GREATEST(day_hours - 7.5, 0)), 0) AS extra_hours
-     FROM (
-       SELECT t.user_id, u.name AS employee_name, te.work_date, SUM(te.hours) AS day_hours
-       FROM timesheet_entries te
-       JOIN timesheets t ON t.id = te.timesheet_id
-       JOIN users u ON u.id = t.user_id
-       WHERE te.entry_type IN ('work', 'other')
-         AND t.week_start BETWEEN $1 AND $2
-       GROUP BY t.user_id, u.name, te.work_date
-     ) day_totals
-     GROUP BY user_id, employee_name`,
-    [from, to]
-  );
-  const extraHoursByUser = {};
-  for (const row of extraHoursResult.rows) {
-    extraHoursByUser[row.user_id] = Number(row.extra_hours);
-  }
-
-  const byEmployeeWithExtra = byEmployee.rows.map((row) => ({
-    ...row,
-    extra_hours: extraHoursByUser[row.user_id] || 0
-  }));
-
-  const totals = byEmployeeWithExtra.reduce(
-    (acc, row) => {
-      acc.work_hours += Number(row.work_hours);
-      acc.extra_hours += Number(row.extra_hours);
-      acc.sick_leave_days += Number(row.sick_leave_days);
-      acc.local_leave_days += Number(row.local_leave_days);
-      acc.emergency_leave_days += Number(row.emergency_leave_days);
-      return acc;
-    },
-    {
-      work_hours: 0, extra_hours: 0, sick_leave_days: 0, local_leave_days: 0,
-      emergency_leave_days: 0
-    }
-  );
-
-  res.json({
-    by_project: byProject.rows,
-    by_employee: byEmployeeWithExtra,
-    by_employee_project: byEmployeeProject.rows,
-    company_totals: totals
-  });
-});
-
-// --- Excel export ---
-router.get('/export.xlsx', async (req, res) => {
-  try {
-    const from = req.query.from || '1970-01-01';
-    const to = req.query.to || '2999-12-31';
+    res.json({ by_project: byProject.rows, by_employee: employees, by_employee_project: byEmployeeProject.rows, company_totals: totals });
+  } catch (err) { await client.query('ROLLBACK'); throw err; }
+  finally { client.release(); }
+}));
+router.get('/export.xlsx', asyncHandler(async (req, res) => {
+    object(req.query, ['from', 'to'], 'query');
+    const { from, to } = range(req.query);
 
     // ---------------------------------------------------------
     // 1. Get detailed timesheet data
     // ---------------------------------------------------------
     const result = await pool.query(
       `SELECT
+          u.id AS user_id,
+          p.id AS project_id,
           u.name AS employee,
           u.email,
           t.week_start,
@@ -345,18 +169,17 @@ router.get('/export.xlsx', async (req, res) => {
       'FFE4DFEC'
     ];
 
-    const employeeColourMap = {};
+    const employeeColourMap = new Map();
     let nextColourIndex = 0;
 
     // ---------------------------------------------------------
     // Add detailed rows
     // ---------------------------------------------------------
     for (const r of result.rows) {
-      const employee = r.employee || 'Unknown Employee';
+      const employeeId = r.user_id;
 
-      if (!employeeColourMap[employee]) {
-        employeeColourMap[employee] =
-          employeeColours[nextColourIndex % employeeColours.length];
+      if (!employeeColourMap.has(employeeId)) {
+        employeeColourMap.set(employeeId, employeeColours[nextColourIndex % employeeColours.length]);
 
         nextColourIndex++;
       }
@@ -367,7 +190,7 @@ router.get('/export.xlsx', async (req, res) => {
         week_start: r.week_start || '',
         date: r.work_date || '',
         type: r.entry_type || '',
-        project: r.project || '',
+        project: r.entry_type === 'other' ? 'Other work (unassigned)' : r.project || '',
         hours: r.hours !== null ? Number(r.hours) : '',
         days: r.days !== null ? Number(r.days) : '',
         unit: r.leave_unit || '',
@@ -381,7 +204,7 @@ router.get('/export.xlsx', async (req, res) => {
           type: 'pattern',
           pattern: 'solid',
           fgColor: {
-            argb: employeeColourMap[employee]
+            argb: employeeColourMap.get(employeeId)
           }
         };
       });
@@ -425,30 +248,15 @@ router.get('/export.xlsx', async (req, res) => {
     // ---------------------------------------------------------
     // Calculate hours per project per employee
     // ---------------------------------------------------------
-    const projectData = {};
-
+    const projectData = new Map();
     for (const r of result.rows) {
-      // Ignore leave entries; Other is reported as its own project category.
-      if (!['work', 'other'].includes(r.entry_type)) {
-        continue;
-      }
-
-      const project = r.project || 'Other';
-      const employee = r.employee || 'Unknown Employee';
-      const email = r.email || '';
-
-      if (!projectData[project]) {
-        projectData[project] = {};
-      }
-
-      if (!projectData[project][employee]) {
-        projectData[project][employee] = {
-          email,
-          hours: 0
-        };
-      }
-
-      projectData[project][employee].hours += Number(r.hours) || 0;
+      // Identity, not display names, separates projects and contributors.
+      if (!['work', 'other'].includes(r.entry_type) || (r.entry_type === 'work' && r.project_id === null)) continue;
+      const id = r.project_id ?? 0;
+      if (!projectData.has(id)) projectData.set(id, { id, name: id === 0 ? 'Other work (unassigned)' : r.project, employees: new Map() });
+      const project = projectData.get(id);
+      if (!project.employees.has(r.user_id)) project.employees.set(r.user_id, { name: r.employee || 'Unknown Employee', email: r.email || '', hours: 0 });
+      project.employees.get(r.user_id).hours += Number(r.hours);
     }
 
     // ---------------------------------------------------------
@@ -477,24 +285,18 @@ router.get('/export.xlsx', async (req, res) => {
     // ---------------------------------------------------------
     // Add projects and employees
     // ---------------------------------------------------------
-    const sortedProjects = Object.keys(projectData).sort(
-      (a, b) => a.localeCompare(b)
-    );
-
+    const sortedProjects = [...projectData.values()].sort((a, b) => a.name.localeCompare(b.name) || a.id - b.id);
     for (const project of sortedProjects) {
-      const employees = Object.entries(projectData[project])
-        .sort(([employeeA], [employeeB]) =>
-          employeeA.localeCompare(employeeB)
-        );
+      const employees = [...project.employees.values()].sort((a, b) => a.name.localeCompare(b.name) || a.email.localeCompare(b.email));
 
       let projectTotal = 0;
 
-      for (const [employee, data] of employees) {
+      for (const data of employees) {
         const hours = Number(data.hours) || 0;
 
         projectSheet.addRow({
-          project,
-          employee,
+          project: project.name,
+          employee: data.name,
           email: data.email,
           hours
         });
@@ -504,7 +306,7 @@ router.get('/export.xlsx', async (req, res) => {
 
       // Project total row
       const totalRow = projectSheet.addRow({
-        project: `${project} TOTAL`,
+        project: `${project.name} TOTAL`,
         employee: '',
         email: '',
         hours: projectTotal
@@ -585,12 +387,6 @@ router.get('/export.xlsx', async (req, res) => {
 
     res.end();
 
-  } catch (err) {
-    console.error('Excel export failed:', err);
-    res.status(500).json({
-      error: 'Failed to generate Excel export'
-    });
-  }
-});
+}));
 
 module.exports = router;
