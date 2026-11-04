@@ -39,43 +39,13 @@
       </div>
       <button class="btn login-submit" id="loginBtn">Sign in <span aria-hidden="true">&rarr;</span></button>
       <div class="error-msg" id="err" role="alert"></div>
-      <p class="login-help">Need access or a password reset?<br>Contact your studio administrator.</p>
+      <p class="login-help">Need access or a password reset?<br><a href="/reset-password.html">Request a password reset</a>.</p>
     </div>
     <span class="login-panel-footer">Your time. Your projects. One place.</span>
     </section>
   </main>
 
   <script src="/js/api.js"></script>
-  <script>
-    async function doLogin() {
-      const email = document.getElementById('email').value.trim();
-      const password = document.getElementById('password').value;
-      const errEl = document.getElementById('err');
-      errEl.textContent = '';
-      if (!email || !password) {
-        errEl.textContent = 'Please enter your email and password.';
-        return;
-      }
-      try {
-        const { user } = await Api.post('/api/auth/login', { email, password });
-        window.location.href = user.role === 'admin' ? '/admin.html' : '/employee.html';
-      } catch (e) {
-        errEl.textContent = e.message;
-      }
-    }
-
-    document.getElementById('loginBtn').addEventListener('click', doLogin);
-    document.getElementById('password').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') doLogin();
-    });
-
-    // If already logged in, skip straight to the right dashboard.
-    (async () => {
-      try {
-        const { user } = await Api.get('/api/auth/me');
-        window.location.href = user.role === 'admin' ? '/admin.html' : '/employee.html';
-      } catch (e) { /* not logged in, stay here */ }
-    })();
-  </script>
+  <script src="/js/login.js"></script>
 </body>
 </html>

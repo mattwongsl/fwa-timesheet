@@ -118,13 +118,13 @@ async function loadTimesheets() {
   try {
     data = await Api.get(`/api/admin/timesheets?${params.toString()}`);
   } catch (e) {
-    body.innerHTML = `<tr><td colspan="8" class="error-msg">Couldn't load timesheets: ${e.message}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="8" class="error-msg">Couldn't load timesheets: ${escapeAttr(e.message)}</td></tr>`;
     return;
   }
 
   body.innerHTML = data.timesheets.map(({ timesheet, summary }) => `
     <tr>
-      <td>${timesheet.employee_name}</td>
+      <td>${escapeAttr(timesheet.employee_name)}</td>
       <td>${fmtDate(timesheet.week_start)}</td>
       <td>${statusBadgeHtml(timesheet)}</td>
       <td>${fmtHours(summary.work_hours)}</td>
@@ -400,9 +400,9 @@ async function loadRequests() {
   const body = document.getElementById('requestsBody');
   body.innerHTML = data.requests.map((r) => `
     <tr>
-      <td>${r.employee_name}</td>
+      <td>${escapeAttr(r.employee_name)}</td>
       <td>${fmtDate(r.week_start)}</td>
-      <td>${r.reason ? r.reason.replace(/</g, '&lt;') : '<span class="muted">—</span>'}</td>
+      <td>${r.reason ? escapeAttr(r.reason) : '<span class="muted">—</span>'}</td>
       <td>${new Date(r.created_at).toLocaleString()}</td>
       <td>
         <button class="btn small secondary" data-approve="${r.id}">Approve</button>
@@ -537,8 +537,8 @@ function renderEmployeesTable() {
     }
     return `
       <tr>
-        <td>${e.name}</td>
-        <td>${e.email}</td>
+        <td>${escapeAttr(e.name)}</td>
+        <td>${escapeAttr(e.email)}</td>
         <td>${e.role}</td>
         <td>${e.active ? '<span class="badge open">Active</span>' : '<span class="badge locked">Inactive</span>'}</td>
         <td>
@@ -587,7 +587,7 @@ function renderEmployeesTable() {
   body.querySelectorAll('button[data-reset]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const data = await Api.post(`/api/employees/${btn.dataset.reset}/reset-password`);
-      alert(`New temporary password for ${data.employee.name}:\n\n${data.temporaryPassword}\n\nShare this with them securely. They should change it after logging in.`);
+      alert(data.message);
     });
   });
 
@@ -599,7 +599,7 @@ async function loadEmployees() {
 
   const select = document.getElementById('filterEmployee');
   select.innerHTML = '<option value="">All employees</option>' +
-    allEmployees.map((e) => `<option value="${e.id}">${e.name}</option>`).join('');
+    allEmployees.map((e) => `<option value="${e.id}">${escapeAttr(e.name)}</option>`).join('');
 
   renderEmployeesTable();
 }
@@ -612,7 +612,7 @@ async function addEmployee() {
   if (!name || !email) { msg.textContent = 'Name and email are required.'; return; }
   try {
     const data = await Api.post('/api/employees', { name, email, role });
-    msg.textContent = `Created. Temporary password: ${data.temporaryPassword} (share this securely).`;
+    msg.textContent = data.message;
     document.getElementById('newEmpName').value = '';
     document.getElementById('newEmpEmail').value = '';
     await loadEmployees();
@@ -641,7 +641,7 @@ function renderProjectsTable(allProjectsIncludingArchived) {
     }
     return `
       <tr>
-        <td>${p.name}</td>
+        <td>${escapeAttr(p.name)}</td>
         <td>${p.archived ? '<span class="badge locked">Archived</span>' : '<span class="badge open">Active</span>'}</td>
         <td>
           <button class="btn small secondary" data-edit-proj="${p.id}">Edit</button>

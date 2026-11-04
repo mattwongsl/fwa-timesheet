@@ -1,8 +1,19 @@
 const Api = {
+  csrf: null,
   async request(method, url, body) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (!['GET', 'HEAD'].includes(method)) {
+      if (!this.csrf) {
+        const tokenResponse = await fetch('/api/auth/csrf', { credentials: 'include', cache: 'no-store' });
+        if (!tokenResponse.ok) throw new Error('Unable to initialize secure request. Reload and try again.');
+        this.csrf = (await tokenResponse.json()).csrfToken;
+      }
+      headers['X-CSRF-Token'] = this.csrf;
+      if (body === undefined) body = {};
+    }
     const res = await fetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       credentials: 'include',
       body: body !== undefined ? JSON.stringify(body) : undefined
     });

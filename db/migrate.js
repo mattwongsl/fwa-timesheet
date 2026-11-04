@@ -7,9 +7,15 @@ async function main() {
     const applied = await migrate(pool);
     console.log(applied.length ? `Migration complete: ${applied.map(({ version, name }) => `${version}_${name}`).join(', ')}.` : 'Database is already up to date.');
   } catch (err) {
-    console.error('Migration failed:', err.message);
-    if (err.detail) console.error(err.detail);
-    if (err.hint) console.error(err.hint);
+    // Only the known legacy validator emits reviewed record IDs. Never print
+    // arbitrary SQL/connection errors or details that may contain credentials.
+    if (err.message === 'Phase 2 migration blocked by legacy data that needs review.') {
+      console.error(err.message);
+      if (err.detail) console.error(err.detail);
+      if (err.hint) console.error(err.hint);
+    } else {
+      console.error('Migration failed. Check target, privileges, migration checksums and readiness. Error type:', err.code || err.name);
+    }
     process.exitCode = 1;
   } finally {
     await pool.end();

@@ -36,7 +36,7 @@ async function seed(pool) {
 
 test('real PostgreSQL migrations apply once, preserve readiness, and reject changed checksums', async () => isolatedSchema(async (pool) => {
   await assert.rejects(assertSchemaReady(pool), /npm run migrate/);
-  assert.deepEqual((await migrate(pool)).map((m) => m.version), ['001', '002']);
+  assert.deepEqual((await migrate(pool)).map((m) => m.version), ['001', '002', '003']);
   await assertSchemaReady(pool);
   assert.deepEqual(await migrate(pool), []);
   const columns = (await pool.query("SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='unlock_requests'")).rows.map((r) => r.column_name);

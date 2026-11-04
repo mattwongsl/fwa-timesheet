@@ -18,13 +18,17 @@ let server, origin, users, projects;
 const week = currentWeekStart();
 const hash = bcrypt.hashSync('Synthetic-password-123!', 4);
 
-function token(user, claims = {}) {
-  return jwt.sign({ id: user.id, name: user.name, email: user.email, role: user.role, ...claims }, process.env.JWT_SECRET, { expiresIn: '1h' });
+async function token(user, claims = {}) {
+  const { digest } = require('../../security/sessions');
+  const sid = require('crypto').createHash('sha256').update('synthetic-session-' + user.id).digest('hex');
+  return jwt.sign({ id: user.id, sid, name: user.name, email: user.email, role: user.role, ...claims }, process.env.JWT_SECRET, { expiresIn: '1h' });
 }
 async function request(method, route, body, user = users.employee, claims) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (user) headers.Cookie = `token=${token(user, claims)}`;
-  const response = await fetch(origin + route, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(10000) });
+  const csrfResponse = await fetch(origin + '/api/auth/csrf');
+  const csrf = (await csrfResponse.json()).csrfToken;
+  const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, Cookie: `csrf=${csrf}` };
+  if (user) headers.Cookie += `; token=${await token(user, claims)}`;
+  const response = await fetch(origin + route, { method, headers, body: body === undefined ? (['GET','HEAD'].includes(method) ? undefined : '{}') : JSON.stringify(body), signal: AbortSignal.timeout(10000) });
   return { status: response.status, body: await response.json() };
 }
 function expectStatus(response, status) {
@@ -80,12 +84,16 @@ test.before(async () => {
 });
 
 test.beforeEach(async () => {
-  await pool.query('TRUNCATE timesheet_entries, unlock_requests, timesheets, projects, users RESTART IDENTITY');
+  await pool.query('TRUNCATE auth_sessions, password_reset_tokens, timesheet_entries, unlock_requests, timesheets, projects, users RESTART IDENTITY');
   const employees = (await pool.query(
     `INSERT INTO users(name,email,password_hash,role) VALUES
      ('Synthetic Admin','admin@example.test',$1,'admin'),('Synthetic Admin Two','admin2@example.test',$1,'admin'),
      ('Synthetic Employee','employee@example.test',$1,'employee'),('Synthetic Other','other@example.test',$1,'employee') RETURNING *`, [hash]
   )).rows;
+  for (const user of employees) {
+    const sid = require('crypto').createHash('sha256').update('synthetic-session-' + user.id).digest('hex');
+    await pool.query("INSERT INTO auth_sessions(id_hash,user_id,expires_at) VALUES($1,$2,now()+interval '1 hour')", [require('../../security/sessions').digest(sid), user.id]);
+  }
   users = { admin: employees[0], admin2: employees[1], employee: employees[2], other: employees[3] };
   const rows = (await pool.query("INSERT INTO projects(name) VALUES('Synthetic Architecture'),('Synthetic Restoration') RETURNING *")).rows;
   projects = { first: rows[0], second: rows[1] };
@@ -188,6 +196,10 @@ test('deactivation immediately invalidates an existing token and preserves histo
   const stats = expectStatus(await request('GET', `/api/admin/stats?from=${week}&to=${addDays(week, 4)}`, undefined, users.admin), 200);
   assert.equal(Number(stats.by_employee.find((e) => e.user_id === users.employee.id).work_hours), 37.5);
   expectStatus(await request('PATCH', `/api/employees/${users.employee.id}/reactivate`, {}, users.admin), 200);
+  expectStatus(await request('GET', '/api/timesheets/mine/history'), 401);
+  // Simulate a fresh successful login after reactivation; old sessions stay revoked.
+  const sid = require('crypto').createHash('sha256').update('synthetic-session-' + users.employee.id).digest('hex');
+  await pool.query("INSERT INTO auth_sessions(id_hash,user_id,expires_at) VALUES($1,$2,now()+interval '1 hour')", [require('../../security/sessions').digest(sid), users.employee.id]);
   const history = expectStatus(await request('GET', '/api/timesheets/mine/history'), 200);
   assert.equal(history.timesheets[0].timesheet.id, sheet.id);
 });
@@ -437,7 +449,7 @@ test('Excel export groups by stable IDs and preserves same-name and inactive emp
   const second = days(); second[0].projects = [{ entry_type: 'other', hours: 7.5, other_description: 'Studio coordination' }];
   await savedSheet(second, users.other);
   expectStatus(await request('PATCH', `/api/employees/${users.other.id}/deactivate`, {}, users.admin), 200);
-  const response = await fetch(`${origin}/api/admin/export.xlsx?from=${week}&to=${addDays(week, 4)}`, { headers: { Cookie: `token=${token(users.admin)}` }, signal: AbortSignal.timeout(10000) });
+  const response = await fetch(`${origin}/api/admin/export.xlsx?from=${week}&to=${addDays(week, 4)}`, { headers: { Cookie: `token=${await token(users.admin)}` }, signal: AbortSignal.timeout(10000) });
   assert.equal(response.status, 200);
   const ExcelJS = require('exceljs');
   const workbook = new ExcelJS.Workbook();

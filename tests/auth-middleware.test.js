@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const source = fs.readFileSync('middleware/auth.js', 'utf8');
-function scenario({ token = 'synthetic-token', payload = { id: 7, role: 'admin' }, user = { id: 7, name: 'Test Employee', email: 'employee@example.test', role: 'employee', active: true }, tokenError, databaseError } = {}) {
+function scenario({ token = 'synthetic-token', payload = { id: 7, role: 'admin', sid: 'a'.repeat(64), exp: 9999999999 }, user = { id: 7, name: 'Test Employee', email: 'employee@example.test', role: 'employee', active: true }, tokenError, databaseError } = {}) {
   let queries = 0, nextError, nextCount = 0;
   const req = { cookies: token ? { token } : {} };
   const res = {
@@ -17,6 +17,7 @@ function scenario({ token = 'synthetic-token', payload = { id: 7, role: 'admin' 
     module: { exports: {} },
     require(name) {
       if (name === 'jsonwebtoken') return { verify(value, secret, options) { assert.equal(options.algorithms[0], 'HS256'); if (tokenError) throw tokenError; return payload; } };
+      if (name === '../security/sessions') return { digest: value => value };
       if (name === '../db/pool') return { async query(sql, values) { queries++; assert.match(sql, /FROM users WHERE id = \$1/); assert.equal(values[0], payload.id); if (databaseError) throw databaseError; return { rows: user ? [user] : [] }; } };
       throw new Error(`Unexpected dependency ${name}`);
     }

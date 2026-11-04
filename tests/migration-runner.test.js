@@ -22,11 +22,11 @@ const appliedMigrations = () => loadMigrations().map(({ version, checksum }) => 
 test('runner serializes migrations, applies SQL and ledger in one transaction', async () => {
   const database = fakeDatabase();
   const applied = await migrate(database.pool);
-  assert.deepEqual(applied.map((migration) => migration.version), ['001', '002']);
+  assert.deepEqual(applied.map((migration) => migration.version), ['001', '002', '003']);
   assert.equal(database.calls[0].sql, 'BEGIN');
   assert.equal(database.calls[1].sql, 'SELECT pg_advisory_xact_lock($1)');
   assert.equal(database.calls.at(-1).sql, 'COMMIT');
-  assert.equal(database.calls.filter(({ sql }) => sql.startsWith('INSERT INTO schema_migrations')).length, 2);
+  assert.equal(database.calls.filter(({ sql }) => sql.startsWith('INSERT INTO schema_migrations')).length, 3);
   assert.equal(database.released, true);
 });
 

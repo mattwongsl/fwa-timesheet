@@ -19,7 +19,7 @@ npm run seed-admin
 npm start
 ```
 
-Open http://localhost:3000. `seed-admin` creates the configured administrator or deliberately resets/reactivates the configured existing account; use a chosen private password. Existing installations normally need only migration and restart, not another seed.
+Open http://localhost:3000. `seed-admin` creates a new configured administrator with an explicit strong password and refuses to alter an existing account. Existing installations normally need only an approved migration and restart, not another seed.
 
 Startup now checks migration readiness without modifying schema or creating accounts. A missing/pending migration or changed migration checksum stops startup with an actionable message.
 
@@ -55,3 +55,13 @@ Integration tests require PostgreSQL 17 binaries (`initdb`, `pg_ctl`) and permis
 - `public/`: existing branded browser interface; `timesheet-payload.js` serializes canonical write payloads.
 
 Read the [initial audit](docs/phase2-audit.md), [engineering learning guide](docs/phase2-guide.md), and [completion report](docs/phase2-report.md) for policies, API changes, migration compatibility, evidence and remaining risks.
+
+## Phase 3 security review
+
+Changes on `phase3-auth-security` require review before deployment. Read [the initial audit](docs/phase3-audit.md), [security operations and learning guide](docs/phase3-guide.md), [requirement checklist](docs/phase3-checklist.md), and [verification report](docs/phase3-report.md).
+
+Apply migration `003_security.sql` only to an explicitly approved target after backup and review. Existing accounts/passwords and Phase 2 history are preserved; old JWTs require re-login because they have no session ID. Configure an exact `APP_ORIGIN`, a separate random `JWT_SECRET` for each environment, and email delivery before inviting accounts or requesting resets. Startup never migrates automatically. Production requires HTTPS, `DEPLOYMENT_ENV=production`, and reviewed proxy settings.
+
+New API clients must get `/api/auth/csrf`, retain its cookie and send the returned `csrfToken` as `X-CSRF-Token` on every JSON write, including login. The browser client does this automatically. Account creation and administrator reset now send one-time email links instead of returning temporary passwords. Password changes log out all sessions.
+
+Run `npm test` with local PostgreSQL 17. To include Chromium verification, install Playwright/Chromium outside the checkout and set `FWA_PLAYWRIGHT_PATH` to the absolute Playwright module path. The browser test is explicitly skipped when that optional tooling is absent; HTTP/security/database tests still run. No test uses the configured Neon database.
