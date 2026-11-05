@@ -6,6 +6,11 @@ const { requireAuth, requireAdmin } = require('../middleware/auth');
 const asyncHandler = require('../middleware/asyncHandler');
 const { httpError, positiveId, object, text } = require('../validation/common');
 
+const { password, cookieOptions } = require('../security/config');
+const { revokeAll } = require('../security/sessions');
+const { issueReset } = require('../security/reset');
+const mail = require('../security/email');
+const { sensitive } = require('../middleware/security');
 const router = express.Router();
 const PUBLIC_FIELDS = 'id, name, email, role, active, created_at';
 
@@ -60,15 +65,19 @@ router.get('/', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
   res.json({ employees: result.rows });
 }));
 
-router.post('/', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+router.post('/', requireAuth, requireAdmin, sensitive, asyncHandler(async (req, res) => {
   const { name, email, role } = profile(req.body, true);
-  const temporaryPassword = crypto.randomBytes(6).toString('base64url');
-  const hash = await bcrypt.hash(temporaryPassword, 10);
-  const employee = await withAdminChange(req.user.id, async (client) => (await client.query(
-    `INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING ${PUBLIC_FIELDS}`,
-    [name, email, hash, role]
-  )).rows[0]);
-  res.status(201).json({ employee, temporaryPassword });
+  if (!mail.configured()) throw httpError(503, 'Configure recovery email before creating accounts or requesting resets.');
+  const hash = await bcrypt.hash(crypto.randomBytes(48).toString('base64url'), 12);
+  const employee = await withAdminChange(req.user.id, async (client) => {
+    const created = (await client.query(
+      `INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING ${PUBLIC_FIELDS}`,
+      [name, email, hash, role]
+    )).rows[0];
+    await issueReset(client, created);
+    return created;
+  });
+  res.status(201).json({ employee, message: 'Password setup instructions sent.' });
 }));
 
 router.patch('/:id/deactivate', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
@@ -93,23 +102,24 @@ router.patch('/:id/reactivate', requireAuth, requireAdmin, asyncHandler(async (r
   res.json({ employee });
 }));
 
-router.post('/:id/reset-password', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+router.post('/:id/reset-password', requireAuth, requireAdmin, sensitive, asyncHandler(async (req, res) => {
   const id = positiveId(req.params.id, 'Employee id');
   object(req.body ?? {}, []);
-  const temporaryPassword = crypto.randomBytes(6).toString('base64url');
-  const hash = await bcrypt.hash(temporaryPassword, 10);
-  const employee = await withAdminChange(req.user.id, async (client) => {
-    await targetUser(client, id);
-    return (await client.query('UPDATE users SET password_hash = $1 WHERE id = $2 RETURNING id, name, email', [hash, id])).rows[0];
+  if (!mail.configured()) throw httpError(503, 'Configure recovery email before requesting resets.');
+  await withAdminChange(req.user.id, async (client) => {
+    const user = await targetUser(client, id);
+    if (!user.active) throw httpError(409, 'Reactivate the employee before initiating recovery.');
+    await issueReset(client, user);
   });
-  res.json({ employee, temporaryPassword });
+  res.json({ message: 'Password recovery instructions sent. The password has not changed.' });
 }));
 
 router.patch('/:id', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
   const id = positiveId(req.params.id, 'Employee id');
   const { name, email } = profile(req.body);
   const employee = await withAdminChange(req.user.id, async (client) => {
-    await targetUser(client, id);
+    const target = await targetUser(client, id);
+    if (target.email !== email) await revokeAll(client, id);
     return (await client.query(`UPDATE users SET name = $1, email = $2 WHERE id = $3 RETURNING ${PUBLIC_FIELDS}`, [name, email, id])).rows[0];
   });
   res.json({ employee });
@@ -134,21 +144,23 @@ router.delete('/:id', requireAuth, requireAdmin, asyncHandler(async (req, res) =
   res.json({ deleted: true, id });
 }));
 
-router.post('/me/password', requireAuth, asyncHandler(async (req, res) => {
+router.post('/me/password', requireAuth, sensitive, asyncHandler(async (req, res) => {
   object(req.body, ['currentPassword', 'newPassword']);
   const { currentPassword, newPassword } = req.body;
   if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') throw httpError(400, 'Current and new passwords must be text.');
-  if (newPassword.length < 8) throw httpError(400, 'New password must be at least 8 characters.');
-  if (currentPassword.length > 1000 || newPassword.length > 1000) throw httpError(400, 'Passwords must be no more than 1000 characters.');
+  password(newPassword);
+  if (Buffer.byteLength(currentPassword) > 72) throw httpError(400, 'Current password is too long.');
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const user = (await client.query('SELECT id, active, password_hash FROM users WHERE id = $1 FOR UPDATE', [req.user.id])).rows[0];
     if (!user || !user.active) throw httpError(401, 'This account is inactive or no longer exists.');
     if (!await bcrypt.compare(currentPassword, user.password_hash)) throw httpError(401, 'Current password is incorrect.');
-    await client.query('UPDATE users SET password_hash = $1 WHERE id = $2', [await bcrypt.hash(newPassword, 10), user.id]);
+    await client.query('UPDATE users SET password_hash = $1 WHERE id = $2', [await bcrypt.hash(newPassword, 12), user.id]);
+    await revokeAll(client, user.id);
     await client.query('COMMIT');
-    res.json({ ok: true });
+    res.clearCookie('token', cookieOptions());
+    res.json({ ok: true, loginRequired: true });
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;

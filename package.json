@@ -8,18 +8,20 @@
     "migrate": "node db/migrate.js",
     "seed-admin": "node db/seed-admin.js",
     "test": "npm run test:unit && npm run test:integration",
-    "test:unit": "node --test tests/*.test.js",
+    "test:unit": "node --test --test-isolation=none tests/*.test.js",
     "test:integration": "node scripts/test-postgres.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",
-    "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "exceljs": "^3.4.0",
     "express": "^4.19.2",
+    "express-rate-limit": "^8.7.3",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^10.3.1",
     "pg": "^8.11.5"
   },
   "engines": {

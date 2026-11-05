@@ -1,10 +1,11 @@
-require('dotenv').config();
+if (process.env.NODE_ENV !== 'test') require('dotenv').config();
+const { validateConfig } = require('./security/config');
 const pool = require('./db/pool');
 const { assertSchemaReady } = require('./db/migrationRunner');
 const app = require('./app');
 
 async function start() {
-  if (!process.env.JWT_SECRET) throw new Error('Missing JWT_SECRET. Configure it in .env before starting.');
+  validateConfig();
   // Startup only checks readiness. Schema/data changes require an explicit CLI.
   await assertSchemaReady(pool);
   const server = app.listen(process.env.PORT || 3000, () => console.log(`Timesheet app listening on port ${process.env.PORT || 3000}`));
@@ -15,7 +16,7 @@ async function start() {
   return server;
 }
 if (require.main === module) start().catch(async (err) => {
-  console.error('Cannot start timesheet app:', err.message);
+  console.error('Cannot start timesheet app. Check configuration and migration readiness. Error type:', err.code || err.name);
   await pool.end(); process.exitCode = 1;
 });
 module.exports = { start };

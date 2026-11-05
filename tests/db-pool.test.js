@@ -29,12 +29,12 @@ test('standard PostgreSQL remains the default with local SSL behavior preserved'
   assert.equal(result.dateParser('2026-10-30'), '2026-10-30');
 });
 
-test('TCP SSL behavior remains unchanged for hosted databases and production', () => {
+test('TCP verifies certificates for hosted databases and production', () => {
   for (const env of [
     { DATABASE_URL: 'postgresql://user:example@host/app?sslmode=require' },
     { DATABASE_URL: 'postgresql://user:example@host/app', NODE_ENV: 'production' }
   ]) {
-    assert.equal(loadPool(env).pool.options.ssl.rejectUnauthorized, false);
+    assert.equal(loadPool(env).pool.options.ssl.rejectUnauthorized, true);
   }
 });
 
@@ -53,4 +53,12 @@ test('invalid transports, unsupported hosts and missing WebSocket support fail c
   assert.throws(() => loadPool({ DATABASE_URL: 'postgresql://localhost/app', DATABASE_TRANSPORT: 'typo' }), /must be tcp or websocket/);
   assert.throws(() => loadPool({ DATABASE_URL: 'postgresql://localhost/app', DATABASE_TRANSPORT: 'websocket' }), /requires a Neon/);
   assert.throws(() => loadPool({ DATABASE_URL: 'postgresql://ep-test.neon.tech/app', DATABASE_TRANSPORT: 'websocket' }, null), /Node.js 22/);
+});
+
+test('remote TCP rejects insecure sslmode and removes URL TLS overrides', () => {
+  for (const mode of ['disable','allow','prefer','no-verify']) assert.throws(() => loadPool({DATABASE_URL:`postgresql://host/app?sslmode=${mode}`}), /requires verified TLS/);
+  const result=loadPool({DATABASE_URL:'postgresql://host/app?sslmode=require&sslrootcert=untrusted'});
+  assert.equal(result.pool.options.ssl.rejectUnauthorized,true);
+  assert.equal(new URL(result.pool.options.connectionString).searchParams.has('sslmode'),false);
+  assert.equal(new URL(result.pool.options.connectionString).searchParams.has('sslrootcert'),false);
 });

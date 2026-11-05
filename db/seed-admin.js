@@ -1,32 +1,15 @@
-require('dotenv').config();
+if (process.env.NODE_ENV !== 'test') require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const pool = require('./pool');
-
+const { password } = require('../security/config');
 async function seedAdmin() {
-  const name = process.env.INITIAL_ADMIN_NAME || 'Admin';
-  const email = (process.env.INITIAL_ADMIN_EMAIL || 'admin@yourcompany.com').toLowerCase();
-  const password = process.env.INITIAL_ADMIN_PASSWORD || 'ChangeMe123!';
-
-  const hash = await bcrypt.hash(password, 10);
-
-  const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-  if (existing.rows.length > 0) {
-    await pool.query(
-      'UPDATE users SET password_hash = $1, role = $2, active = true WHERE email = $3',
-      [hash, 'admin', email]
-    );
-    console.log(`Existing admin ${email} updated with new password.`);
-  } else {
-    await pool.query(
-      'INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4)',
-      [name, email, hash, 'admin']
-    );
-    console.log(`Admin account created: ${email}`);
-  }
-  await pool.end();
+  const name = process.env.INITIAL_ADMIN_NAME;
+  const email = (process.env.INITIAL_ADMIN_EMAIL || '').trim().toLowerCase();
+  if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || /@yourcompany\.com$/.test(email)) throw Error('Explicit administrator name and valid private email are required.');
+  const chosen = password(process.env.INITIAL_ADMIN_PASSWORD);
+  const hash = await bcrypt.hash(chosen, 12);
+  const result = await pool.query("INSERT INTO users(name,email,password_hash,role) VALUES($1,$2,$3,'admin') ON CONFLICT(email) DO NOTHING RETURNING id", [name, email, hash]);
+  if (!result.rowCount) throw Error('Account already exists. Seed refuses to reset passwords, change roles, or reactivate accounts. Use authorized account recovery.');
+  console.log('Initial administrator created.');
 }
-
-seedAdmin().catch((err) => {
-  console.error('Failed to seed admin:', err);
-  process.exit(1);
-});
+seedAdmin().catch(() => { console.error('Administrator seed failed. Check explicit credentials, database readiness, and whether the account already exists.'); process.exitCode = 1; }).finally(() => pool.end());

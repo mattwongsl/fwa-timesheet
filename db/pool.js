@@ -3,6 +3,9 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
+let databaseUrl;
+try { databaseUrl = new URL(process.env.DATABASE_URL); } catch { throw new Error('DATABASE_URL must be a valid PostgreSQL URL.'); }
+if (!['postgres:', 'postgresql:'].includes(databaseUrl.protocol)) throw new Error('DATABASE_URL must use PostgreSQL.');
 const transport = process.env.DATABASE_TRANSPORT || 'tcp';
 if (!['tcp', 'websocket'].includes(transport)) {
   throw new Error('DATABASE_TRANSPORT must be tcp or websocket.');
@@ -12,7 +15,7 @@ if (!['tcp', 'websocket'].includes(transport)) {
 // This preserves pool.query(), pool.connect(), and interactive transactions
 // on development networks that cannot reach PostgreSQL's TCP port 5432.
 if (transport === 'websocket') {
-  if (!new URL(process.env.DATABASE_URL).hostname.endsWith('.neon.tech')) {
+  if (!databaseUrl.hostname.endsWith('.neon.tech')) {
     throw new Error('The websocket database transport requires a Neon DATABASE_URL.');
   }
   if (typeof WebSocket !== 'function') {
@@ -37,9 +40,16 @@ const options = {
   connectionTimeoutMillis: 10000
 };
 if (transport === 'tcp') {
-  options.ssl = process.env.DATABASE_URL.includes('sslmode=require') || process.env.NODE_ENV === 'production'
-    ? { rejectUnauthorized: false }
-    : false;
+  const url = new URL(databaseUrl.toString());
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  const mode = url.searchParams.get('sslmode');
+  if (!local && ['disable', 'allow', 'prefer', 'no-verify'].includes(mode)) throw new Error('Remote PostgreSQL requires verified TLS.');
+  // pg connection-string sslmode can override the explicit SSL object. Remove
+  // all SSL query overrides and use Node's trusted CA verification explicitly.
+  for (const key of ['sslmode', 'ssl', 'sslcert', 'sslkey', 'sslrootcert']) url.searchParams.delete(key);
+  options.connectionString = url.toString();
+  options.ssl = !local || process.env.NODE_ENV === 'production' || (mode && mode !== 'disable')
+    ? { rejectUnauthorized: true } : false;
 }
 
 const pool = new Pool(options);
